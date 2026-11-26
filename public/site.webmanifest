@@ -1,0 +1,27 @@
+{
+  "name": "Palikkakaupunki",
+  "short_name": "Palikkakaupunki",
+  "description": "Rakenna pienoiskaupunki 8x8-palikkatonteille yksin tai yhdessä muiden kanssa. Microscale 3D LEGO city builder.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05131D",
+  "theme_color": "#fac80a",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

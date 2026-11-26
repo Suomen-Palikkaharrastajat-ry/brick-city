@@ -1,0 +1,25 @@
+{
+  "name": "brick-city",
+  "version": "1.0.0",
+  "description": "3D LEGO microscale collaborative city builder built with Elm, WebGL, and Brick Frame",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --configLoader native --host 0.0.0.0 --port 5178",
+    "build": "vite build --configLoader native",
+    "preview": "vite preview --configLoader native --host 0.0.0.0 --port 4178",
+    "test": "elm-test",
+    "format": "elm-format --yes src/ tests/",
+    "check": "elm-format --validate src/ tests/",
+    "review": "elm-review"
+  },
+  "keywords": [
+    "ldraw",
+    "brick-frame",
+    "elm",
+    "webgl",
+    "city",
+    "microscale"
+  ],
+  "author": "Suomen Palikkaharrastajat ry",
+  "license": "MIT"
+}
