@@ -17,11 +17,13 @@ import City.Mesh as Mesh
 import City.Render as Render
 import City.Stats as Stats
 import City.Templates as Templates
-import City.Types exposing (CityGrid, CityRoom, ElementCategory(..), LotCoord, RoomConnection(..), RoomRole(..))
+import City.Types exposing (CityGrid, CityRoom, CityStats, ElementCategory(..), LotCoord, LotElement, RoomConnection(..), RoomRole(..))
+import Dict
 import Expect
 import Html.Attributes as Attr
 import I18n exposing (Language(..))
 import LDraw.Document as Document
+import Main exposing (Msg(..))
 import Pages.Build as Build exposing (BuilderTab(..), Msg(..), Outcome(..))
 import Pages.CityView as CityView exposing (CameraMode(..), CityMenuModal(..))
 import Render.Camera as Camera exposing (Camera, Navigation(..))
@@ -177,6 +179,74 @@ mockCityViewData =
     , width = 1280
     , height = 800
     , actions = mockActions
+    }
+
+
+offlineRoom : CityRoom
+offlineRoom =
+    { roomId = "CITY88"
+    , role = RoomGuest
+    , status = Disconnected
+    , mySlot = 2
+    , myName = "Tester"
+    , peers = []
+    }
+
+
+offlineCityViewData :
+    { city : CityGrid
+    , stats : CityStats
+    , meshes : Mesh.MeshCache
+    , camera : Camera
+    , selectedLot : Maybe LotCoord
+    , hoveredLot : Maybe LotCoord
+    , clipboard : Maybe LotElement
+    , showLotTemplates : Bool
+    , room : CityRoom
+    , roomCodeInput : String
+    , openModal : CityMenuModal
+    , toast : Maybe String
+    , audioMuted : Bool
+    , language : Language
+    , baseUrl : String
+    , time : Float
+    , width : Int
+    , height : Int
+    , actions : CityView.Actions TestMsg
+    }
+offlineCityViewData =
+    { mockCityViewData
+        | room = offlineRoom
+        , selectedLot = Just (LotCoord 0 0)
+    }
+
+
+baseFlags : Main.Flags
+baseFlags =
+    { savedAudioMuted = False
+    , savedCityJson = ""
+    , savedCitySavedAt = 0
+    , initialRoomId = ""
+    , ldrawBase = "/raw"
+    , ldrawFallbackBase = "/raw"
+    , initialHash = "#/city"
+    , predecodedInitialBytes = Nothing
+    , language = "fi"
+    , supportsPointerEvents = True
+    , baseUrl = "https://kaupunki.palikkaharrastajat.fi"
+    }
+
+
+initOfflineMainModel : Main.Model
+initOfflineMainModel =
+    let
+        ( m, _ ) =
+            Main.init baseFlags
+    in
+    { m
+        | room = offlineRoom
+        , selectedLot = Just (LotCoord 1 1)
+        , clipboard = Dict.get ( 1, 1 ) m.city.lots
     }
 
 
@@ -449,7 +519,90 @@ suite =
                         , \_ -> Expect.equal "Over limits" (T.boundsExceededShort En)
                         , \_ -> Expect.equal "Poista valinta" (T.deselectLotLabel Fi)
                         , \_ -> Expect.equal "Deselect" (T.deselectLotLabel En)
+                        , \_ -> Expect.equal "Muutokset tallennettu vain paikallisesti (ei huoneyhteyttä)." (T.offlineSaveNotice Fi)
+                        , \_ -> Expect.equal "Modifications saved locally only (no room connection)." (T.offlineSaveNotice En)
                         ]
                         ()
+            ]
+        , describe "Offline room modifications and local-only warning"
+            [ test "CityView displays offline warning in Lot Inspector and offline pill in Top HUD when disconnected" <|
+                \_ ->
+                    CityView.viewCity offlineCityViewData
+                        |> Query.fromHtml
+                        |> Expect.all
+                            [ \q -> q |> Query.has [ Selector.attribute (Attr.attribute "data-testid" "lot-inspector-offline-warning") ]
+                            , \q -> q |> Query.find [ Selector.attribute (Attr.attribute "data-testid" "lot-inspector-offline-warning") ] |> Query.has [ Selector.text (T.offlineSaveNotice Fi) ]
+                            , \q -> q |> Query.find [ Selector.attribute (Attr.attribute "data-testid" "collab-modal-button") ] |> Query.has [ Selector.attribute (Attr.title (T.offlineSaveNotice Fi)) ]
+                            ]
+            , test "CityView omits offline warning in Lot Inspector when in LocalSolo" <|
+                \_ ->
+                    CityView.viewCity mockCityViewData
+                        |> Query.fromHtml
+                        |> Query.hasNot [ Selector.attribute (Attr.attribute "data-testid" "lot-inspector-offline-warning") ]
+            , test "Main.update StampTemplate triggers offlineSaveNotice toast and persists city snapshot locally" <|
+                \_ ->
+                    let
+                        tmpl =
+                            Templates.modernSkyscraper
+
+                        ( updated, _ ) =
+                            Main.update (StampTemplate tmpl) initOfflineMainModel
+                    in
+                    Expect.all
+                        [ \m -> Expect.equal (Just ( T.offlineSaveNotice Fi, 4.0 )) m.toast
+                        , \m -> Expect.notEqual Nothing m.savedCity
+                        ]
+                        updated
+            , test "Main.update lot actions (Rotate, Paste, Clear) trigger offlineSaveNotice toast when disconnected" <|
+                \_ ->
+                    let
+                        ( rotated, _ ) =
+                            Main.update RotateSelectedLot initOfflineMainModel
+
+                        ( pasted, _ ) =
+                            Main.update PasteSelectedLot initOfflineMainModel
+
+                        ( cleared, _ ) =
+                            Main.update ClearSelectedLot initOfflineMainModel
+                    in
+                    Expect.all
+                        [ \_ -> Expect.equal (Just ( T.offlineSaveNotice Fi, 4.0 )) rotated.toast
+                        , \_ -> Expect.equal (Just ( T.offlineSaveNotice Fi, 4.0 )) pasted.toast
+                        , \_ -> Expect.equal (Just ( T.offlineSaveNotice Fi, 4.0 )) cleared.toast
+                        ]
+                        ()
+            , test "Main.update grid mutations (CityNameChanged, ResizeGrid) trigger offlineSaveNotice toast when disconnected" <|
+                \_ ->
+                    let
+                        ( named, _ ) =
+                            Main.update (CityNameChanged "Offline Metropolis") initOfflineMainModel
+
+                        ( resized, _ ) =
+                            Main.update (ResizeGrid 3) initOfflineMainModel
+                    in
+                    Expect.all
+                        [ \_ -> Expect.equal (Just ( T.offlineSaveNotice Fi, 4.0 )) named.toast
+                        , \_ -> Expect.equal "Offline Metropolis" named.city.cityName
+                        , \_ -> Expect.equal (Just ( T.offlineSaveNotice Fi, 4.0 )) resized.toast
+                        , \_ -> Expect.equal 3 resized.city.cols
+                        ]
+                        ()
+            , test "Main.update does not trigger offlineSaveNotice toast when room is Connected" <|
+                \_ ->
+                    let
+                        connectedRoom =
+                            { offlineRoom | status = Connected }
+
+                        connectedModel =
+                            let
+                                m =
+                                    initOfflineMainModel
+                            in
+                            { m | room = connectedRoom }
+
+                        ( updated, _ ) =
+                            Main.update RotateSelectedLot connectedModel
+                    in
+                    Expect.equal Nothing updated.toast
             ]
         ]

@@ -70,6 +70,7 @@ module City.I18n exposing
     , modeWalkShort
     , muteLabel
     , newCityHeading
+    , offlineSaveNotice
     , partCountShort
     , pasteBuildHint
     , pasteButtonLabel
@@ -470,6 +471,15 @@ hostOfflineDescription lang =
     tr lang
         "Connection to the host timed out or the creator left. You can become the new host to keep building, or return to your solo city."
         "Yhteys huoneen isäntään katkesi tai huoneen luoja poistui. Voit ryhtyä huoneen uudeksi isännäksi ja jatkaa rakentamista, tai poistua omaan kaupunkiisi."
+
+
+{-| Warning notice displayed when city or lot edits are saved locally without room connection.
+-}
+offlineSaveNotice : Language -> String
+offlineSaveNotice lang =
+    tr lang
+        "Modifications saved locally only (no room connection)."
+        "Muutokset tallennettu vain paikallisesti (ei huoneyhteyttä)."
 
 
 {-| CTA button to claim host role for the room.

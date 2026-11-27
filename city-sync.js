@@ -582,6 +582,12 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
     mySlot = 0
     myName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 24) : 'Builder'
     status = 'connecting'
+
+    const cached = readCachedRoomCity(roomId, storage)
+    if (cached) {
+      snapshot = normalizeSnapshot(cached)
+      emitSnapshotToElm()
+    }
     emitRoomState()
 
     clearConnectTimer()
@@ -617,6 +623,12 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
         if (s === 'ended') {
           clearConnectTimer()
           status = 'disconnected'
+          if (viewer) {
+            try {
+              viewer.stop()
+            } catch {}
+            viewer = null
+          }
           emitRoomState()
           reportError('Huoneen isäntä poistui linjoilta.')
         } else if (s === 'reconnecting') {
@@ -630,6 +642,12 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
         if (session !== mySession) return
         clearConnectTimer()
         status = 'disconnected'
+        if (viewer) {
+          try {
+            viewer.stop()
+          } catch {}
+          viewer = null
+        }
         emitRoomState()
         reportError(err?.message || err)
       },
@@ -639,6 +657,12 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
       if (session !== mySession) return
       clearConnectTimer()
       status = 'disconnected'
+      if (viewer) {
+        try {
+          viewer.stop()
+        } catch {}
+        viewer = null
+      }
       emitRoomState()
       reportError(err?.message || 'Could not join city room')
     })
@@ -671,14 +695,16 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
           })
         }
       }
-    } else if (role === 'guest' && viewer) {
+    } else if (role === 'guest') {
       applyLotMutation(row, col, element)
-      viewer.sendMessage({
-        type: 'lot_update',
-        row,
-        col,
-        element,
-      })
+      if (viewer && typeof viewer.sendMessage === 'function') {
+        viewer.sendMessage({
+          type: 'lot_update',
+          row,
+          col,
+          element,
+        })
+      }
     }
   }
 
@@ -693,12 +719,15 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
         broadcaster.latestBytes = payload
         broadcastToGuests(payload)
       }
-    } else if (role === 'guest' && viewer) {
+    } else if (role === 'guest') {
       snapshot = normalized
-      viewer.sendMessage({
-        type: 'city_replace',
-        snapshot: normalized,
-      })
+      persistRoomSnapshot()
+      if (viewer && typeof viewer.sendMessage === 'function') {
+        viewer.sendMessage({
+          type: 'city_replace',
+          snapshot: normalized,
+        })
+      }
     }
   }
 
@@ -711,7 +740,7 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
         broadcastToGuests(roomStatePayload())
         emitRoomState()
       }
-    } else if (role === 'guest' && viewer) {
+    } else if (role === 'guest' && viewer && typeof viewer.sendMessage === 'function') {
       viewer.sendMessage({
         type: 'focus_lot',
         focusedLot: myFocusedLot,
@@ -722,6 +751,16 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
   // Wire Elm ports
   ports?.saveCity?.subscribe((jsonText) => {
     writeStoredCityJson(jsonText, storage)
+    if (roomId) {
+      try {
+        const parsed = JSON.parse(jsonText)
+        if (parsed && typeof parsed === 'object') {
+          writeCachedRoomCity(roomId, normalizeSnapshot(parsed), storage)
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
   })
   ports?.createCityRoom?.subscribe((req) => createRoom(req))
   ports?.joinCityRoom?.subscribe((req) => joinRoom(req))

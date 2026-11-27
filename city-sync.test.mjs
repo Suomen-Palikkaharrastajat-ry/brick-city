@@ -7,10 +7,12 @@ import {
   createCitySyncManager,
   isRoomHostedLocally,
   parseCityRoomFromHash,
+  readCachedRoomCity,
   readStoredCityJson,
   readStoredCitySavedAt,
   roomShareHash,
   setRoomHostedLocally,
+  writeCachedRoomCity,
   writeStoredCityJson,
 } from './city-sync.js'
 
@@ -99,6 +101,14 @@ function createHub() {
   return { hub, FakeBroadcaster, FakeViewer }
 }
 
+function makeFakeSubscribable() {
+  const subs = []
+  return {
+    subscribe: (fn) => subs.push(fn),
+    emit: (val) => subs.forEach((fn) => fn(val)),
+  }
+}
+
 function makeFakePorts() {
   const events = {
     roomStates: [],
@@ -111,6 +121,13 @@ function makeFakePorts() {
     cityRemoteSnapshot: { send: (v) => events.snapshots.push(v) },
     cityRemoteLotUpdated: { send: (v) => events.lotUpdates.push(v) },
     cityRoomError: { send: (v) => events.errors.push(v) },
+    saveCity: makeFakeSubscribable(),
+    createCityRoom: makeFakeSubscribable(),
+    joinCityRoom: makeFakeSubscribable(),
+    leaveCityRoom: makeFakeSubscribable(),
+    sendLotUpdate: makeFakeSubscribable(),
+    sendCitySnapshot: makeFakeSubscribable(),
+    sendLotFocus: makeFakeSubscribable(),
   }
   return { events, ports }
 }
@@ -296,4 +313,70 @@ test('joinRoom times out cleanly when room host is offline instead of hanging in
   assert.equal(claimedId, 'VACANT1')
   assert.equal(isRoomHostedLocally('VACANT1', storage), true)
   guest.leaveRoom()
+})
+
+test('offline modifications made while disconnected persist to local room cache and restore on rejoin', async () => {
+  class DisconnectedViewer {
+    constructor(_url, _room, opts) {
+      this.opts = opts
+    }
+    async start() {
+      // Offline: immediately triggers connection failure
+      queueMicrotask(() => this.opts.onError?.(new Error('Network offline')))
+    }
+    stop() {}
+  }
+
+  const { ports, events } = makeFakePorts()
+  const storage = createMemoryStorage()
+  const manager = createCitySyncManager(ports, 'http://signaling.invalid', {
+    Viewer: DisconnectedViewer,
+    storage,
+  })
+
+  // 1. Join room as guest while network is down
+  manager.joinRoom({ roomId: 'OFFLINE42', name: 'OfflineBuilder' })
+  await settle()
+
+  assert.equal(events.roomStates.at(-1).status, 'disconnected')
+  assert.equal(manager.role, 'guest')
+
+  // 2. Perform lot modification while disconnected
+  manager.sendLotUpdate({
+    row: 1,
+    col: 2,
+    element: { name: 'Emergency Shelter', category: 'building', updatedAt: 200, partCount: 12 },
+  })
+
+  // 3. Verify in-memory snapshot updated
+  assert.equal(manager.snapshot.lots['1,2'].name, 'Emergency Shelter')
+
+  // 4. Verify persisted to palikkakehys.city.room.OFFLINE42
+  const cached = readCachedRoomCity('OFFLINE42', storage)
+  assert.ok(cached, 'Room cache should exist in storage')
+  assert.equal(cached.lots['1,2'].name, 'Emergency Shelter')
+
+  // 5. Also verify saveCity port saves both general storage and room cache
+  ports.saveCity.emit(JSON.stringify(manager.snapshot))
+  const cachedAfterSave = readCachedRoomCity('OFFLINE42', storage)
+  assert.equal(cachedAfterSave.lots['1,2'].name, 'Emergency Shelter')
+  assert.match(readStoredCityJson(storage), /Emergency Shelter/)
+
+  manager.leaveRoom()
+
+  // 6. When rejoining the same room offline, the cached snapshot is restored immediately
+  const rejoinPorts = makeFakePorts()
+  const rejoinManager = createCitySyncManager(rejoinPorts.ports, 'http://signaling.invalid', {
+    Viewer: DisconnectedViewer,
+    storage,
+  })
+
+  rejoinManager.joinRoom({ roomId: 'OFFLINE42', name: 'OfflineBuilder' })
+  await settle()
+
+  assert.equal(rejoinManager.snapshot.lots['1,2'].name, 'Emergency Shelter')
+  assert.equal(rejoinPorts.events.snapshots.length >= 1, true)
+  assert.equal(rejoinPorts.events.snapshots[0].lots['1,2'].name, 'Emergency Shelter')
+
+  rejoinManager.leaveRoom()
 })

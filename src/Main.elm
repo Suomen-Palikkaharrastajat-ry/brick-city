@@ -1,4 +1,4 @@
-module Main exposing (Flags, Model, Msg, isCityRouteHash, isMenuHash, main)
+module Main exposing (Flags, Model, Msg(..), init, isCityRouteHash, isMenuHash, main, update)
 
 {-| Top-level Elm Architecture entry point for Brick City (`brick-city`).
 Deployed to <https://kaupunki.palikkaharrastajat.fi/>.
@@ -227,6 +227,8 @@ isCityRouteHash rawHash =
     List.member clean [ "#city", "#/city", "#play", "#/play" ]
 
 
+{-| Initialize application state from startup flags.
+-}
 init : Flags -> ( Model, Cmd Msg )
 init flags =
     let
@@ -396,6 +398,17 @@ refreshCityMeshes model =
     )
 
 
+{-| Attach a warning toast if a modification is performed while in an active room session that is not connected.
+-}
+warnIfOfflineRoom : Model -> Model
+warnIfOfflineRoom model =
+    if model.room.role /= LocalSolo && model.room.status /= Connected then
+        { model | toast = Just ( CityI18n.offlineSaveNotice model.language, 4.0 ) }
+
+    else
+        model
+
+
 persistLocalCity : Model -> ( Model, Cmd Msg )
 persistLocalCity model =
     let
@@ -418,6 +431,8 @@ sfxCmd kind =
     Ports.playSfx (Encode.object [ ( "type", Encode.string kind ) ])
 
 
+{-| Top-level application update function.
+-}
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -860,7 +875,7 @@ update msg model =
                     { oldCity | cityName = nextName, version = oldCity.version + 1 }
 
                 ( persisted, saveCmd ) =
-                    persistLocalCity { model | city = nextCity }
+                    persistLocalCity (warnIfOfflineRoom { model | city = nextCity })
             in
             ( persisted
             , Cmd.batch [ saveCmd, syncFullIfInRoom persisted ]
@@ -888,7 +903,7 @@ update msg model =
                     }
 
                 ( persisted, saveCmd ) =
-                    persistLocalCity updated
+                    persistLocalCity (warnIfOfflineRoom updated)
             in
             ( persisted
             , Cmd.batch [ saveCmd, syncFullIfInRoom persisted, sfxCmd "rotate" ]
@@ -1362,7 +1377,7 @@ update msg model =
                     }
 
                 ( persisted, saveCmd ) =
-                    persistLocalCity updated
+                    persistLocalCity (warnIfOfflineRoom updated)
 
                 ( refreshed, fetchCmd ) =
                     refreshCityMeshes persisted
@@ -1383,7 +1398,7 @@ update msg model =
                     }
 
                 ( persisted, saveCmd ) =
-                    persistLocalCity updated
+                    persistLocalCity (warnIfOfflineRoom updated)
 
                 ( refreshed, fetchCmd ) =
                     refreshCityMeshes persisted
@@ -1627,8 +1642,11 @@ applyLocalLotChange coord maybeEl model sfxName =
         nextCity =
             { oldCity | lots = nextLots, version = oldCity.version + 1 }
 
+        withWarning =
+            warnIfOfflineRoom { model | city = nextCity }
+
         ( persisted, saveCmd ) =
-            persistLocalCity { model | city = nextCity }
+            persistLocalCity withWarning
 
         ( refreshed, fetchCmd ) =
             refreshCityMeshes persisted

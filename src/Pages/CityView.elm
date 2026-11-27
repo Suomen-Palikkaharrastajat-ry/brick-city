@@ -164,7 +164,7 @@ viewCity cfg =
         , Lazy.lazy toastView cfg.toast
         , case cfg.selectedLot of
             Just coord ->
-                Lazy.lazy6 lotInspectorCard cfg.city coord (cfg.clipboard /= Nothing) cfg.showLotTemplates cfg.language cfg.actions
+                Lazy.lazy7 lotInspectorCard cfg.city coord (cfg.clipboard /= Nothing) cfg.showLotTemplates cfg.room cfg.language cfg.actions
 
             Nothing ->
                 text ""
@@ -231,6 +231,13 @@ topHud cityName room stats audioMuted lang actions =
                     _ ->
                         "bg-rose-900/80 border-rose-400/60 text-rose-200"
 
+        collabTooltip =
+            if isCollab && room.status /= Connected then
+                T.offlineSaveNotice lang
+
+            else
+                T.roomSharingTab lang
+
         collabDotClass =
             case room.status of
                 Connected ->
@@ -276,8 +283,8 @@ topHud cityName room stats audioMuted lang actions =
                 [ Attr.type_ "button"
                 , onClick (actions.onToggleModal CollabModal)
                 , Attr.attribute "data-testid" "collab-modal-button"
-                , Attr.title (T.roomSharingTab lang)
-                , Attr.attribute "aria-label" (T.roomSharingTab lang)
+                , Attr.title collabTooltip
+                , Attr.attribute "aria-label" collabTooltip
                 , Attr.class
                     ("touch-target inline-flex items-center gap-1.5 h-10 px-3 rounded-full border backdrop-blur-md text-xs font-extrabold cursor-pointer shadow-lg transition-all "
                         ++ collabButtonClass
@@ -288,7 +295,16 @@ topHud cityName room stats audioMuted lang actions =
 
                   else
                     FeatherIcons.users |> FeatherIcons.withSize 15 |> FeatherIcons.toHtml []
-                , span [ Attr.class "hidden sm:inline" ] [ text roomBadgeLabel ]
+                , span
+                    [ Attr.class
+                        (if isCollab && room.status /= Connected then
+                            "inline"
+
+                         else
+                            "hidden sm:inline"
+                        )
+                    ]
+                    [ text roomBadgeLabel ]
                 , if isCollab then
                     span [ Attr.class "px-1.5 py-0.5 rounded-full bg-black/30 text-[10px] font-mono tabular-nums" ]
                         [ text (String.fromInt (List.length room.peers)) ]
@@ -518,10 +534,11 @@ lotInspectorCard :
     -> LotCoord
     -> Bool
     -> Bool
+    -> CityRoom
     -> Language
     -> Actions msg
     -> Html msg
-lotInspectorCard city coord hasClipboard showLotTemplates lang actions =
+lotInspectorCard city coord hasClipboard showLotTemplates room lang actions =
     let
         maybeEl =
             Dict.get ( coord.row, coord.col ) city.lots
@@ -584,6 +601,17 @@ lotInspectorCard city coord hasClipboard showLotTemplates lang actions =
                 ]
                 [ FeatherIcons.x |> FeatherIcons.withSize 14 |> FeatherIcons.toHtml [] ]
             ]
+        , if room.role /= LocalSolo && room.status /= Connected then
+            div
+                [ Attr.class "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-[11px] font-bold"
+                , Attr.attribute "data-testid" "lot-inspector-offline-warning"
+                ]
+                [ FeatherIcons.alertTriangle |> FeatherIcons.withSize 13 |> FeatherIcons.toHtml []
+                , span [] [ text (T.offlineSaveNotice lang) ]
+                ]
+
+          else
+            text ""
         , button
             [ Attr.type_ "button"
             , onClick actions.onEditSelectedLot
