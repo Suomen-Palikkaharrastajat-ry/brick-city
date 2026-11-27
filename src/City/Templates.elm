@@ -577,27 +577,35 @@ straightRoad =
         , category = Road
         , lines =
             [ line colDarkBluishGray 0 0 0 straightM "41539.dat"
-            , -- Asphalt lanes along Z (X -40..40)
-              line colBlack -20 -8 -40 turn90M "87079.dat"
-            , line colBlack 20 -8 -40 turn90M "87079.dat"
-            , line colBlack -20 -8 40 turn90M "87079.dat"
-            , line colBlack 20 -8 40 turn90M "87079.dat"
-            , -- White dashed lane markers
-              line colWhite 0 -16 -50 straightM "3070b.dat"
+            , -- Asphalt outer lanes along Z (X = -30 and X = 30)
+              line colBlack -30 -8 0 turn90M "4162.dat"
+            , line colBlack 30 -8 0 turn90M "4162.dat"
+            , -- Asphalt center strip with jumper plates for lane line
+              line colBlack 0 -8 -70 straightM "3069b.dat"
+            , line colBlack 0 -8 -50 straightM "15573.dat"
+            , line colWhite 0 -16 -50 straightM "3070b.dat"
+            , line colBlack 0 -8 -20 straightM "3068b.dat"
+            , line colBlack 0 -8 10 straightM "15573.dat"
             , line colWhite 0 -16 10 straightM "3070b.dat"
+            , line colBlack 0 -8 30 straightM "3069b.dat"
+            , line colBlack 0 -8 50 straightM "15573.dat"
             , line colWhite 0 -16 50 straightM "3070b.dat"
-            , -- Left and right sidewalks
-              line colLightBluishGray -60 -8 0 turn90M "87079.dat"
-            , line colLightBluishGray -60 -8 -60 straightM "3068b.dat"
+            , line colBlack 0 -8 70 straightM "3069b.dat"
+            , -- Left sidewalk with jumper for streetlamp
+              line colLightBluishGray -60 -8 -70 straightM "3069b.dat"
+            , line colLightBluishGray -60 -8 -50 straightM "15573.dat"
+            , line colLightBluishGray -60 -8 0 turn90M "87079.dat"
             , line colLightBluishGray -60 -8 60 straightM "3068b.dat"
+            , -- Right sidewalk with jumper for streetlamp
+              line colLightBluishGray 60 -8 -60 straightM "3068b.dat"
             , line colLightBluishGray 60 -8 0 turn90M "87079.dat"
-            , line colLightBluishGray 60 -8 -60 straightM "3068b.dat"
-            , line colLightBluishGray 60 -8 60 straightM "3068b.dat"
-            , -- Streetlamps
-              line colDarkBluishGray -70 -32 -50 straightM "3062b.dat"
-            , line colTransYellow -70 -40 -50 straightM "6141.dat"
-            , line colDarkBluishGray 70 -32 50 straightM "3062b.dat"
-            , line colTransYellow 70 -40 50 straightM "6141.dat"
+            , line colLightBluishGray 60 -8 50 straightM "15573.dat"
+            , line colLightBluishGray 60 -8 70 straightM "3069b.dat"
+            , -- Streetlamps mounted on sidewalk jumpers
+              line colDarkBluishGray -60 -32 -50 straightM "3062b.dat"
+            , line colTransYellow -60 -40 -50 straightM "6141.dat"
+            , line colDarkBluishGray 60 -32 50 straightM "3062b.dat"
+            , line colTransYellow 60 -40 50 straightM "6141.dat"
             ]
         }
 
@@ -624,15 +632,16 @@ cornerRoad =
               line colLightBluishGray -60 -8 -60 straightM "3068b.dat"
             , line colLightBluishGray -60 -8 -20 straightM "3068b.dat"
             , line colLightBluishGray -60 -8 20 straightM "3068b.dat"
-            , line colLightBluishGray -60 -8 60 straightM "3068b.dat"
+            , line colLightBluishGray -60 -8 50 straightM "15573.dat"
+            , line colLightBluishGray -60 -8 70 straightM "3069b.dat"
             , line colLightBluishGray -20 -8 60 straightM "3068b.dat"
             , line colLightBluishGray 20 -8 60 straightM "3068b.dat"
             , line colLightBluishGray 60 -8 60 straightM "3068b.dat"
             , -- Inner corner sidewalk
               line colLightBluishGray 60 -8 -60 straightM "3068b.dat"
-            , -- Outer sidewalk streetlamp
-              line colDarkBluishGray -70 -32 50 straightM "3062b.dat"
-            , line colTransYellow -70 -40 50 straightM "6141.dat"
+            , -- Outer sidewalk streetlamp mounted on jumper plate
+              line colDarkBluishGray -60 -32 50 straightM "3062b.dat"
+            , line colTransYellow -60 -40 50 straightM "6141.dat"
             ]
         }
 
@@ -651,10 +660,7 @@ intersection =
         , lines =
             [ line colDarkBluishGray 0 0 0 straightM "41539.dat"
             , -- Central asphalt square
-              line colBlack -20 -8 -20 straightM "3068b.dat"
-            , line colBlack 20 -8 -20 straightM "3068b.dat"
-            , line colBlack -20 -8 20 straightM "3068b.dat"
-            , line colBlack 20 -8 20 straightM "3068b.dat"
+              line colBlack 0 -8 0 straightM "3068b.dat"
             , -- Four branch approaches
               line colBlack 0 -8 -60 straightM "87079.dat"
             , line colBlack 0 -8 60 straightM "87079.dat"
@@ -665,15 +671,20 @@ intersection =
             , line colLightBluishGray 60 -8 -60 straightM "3068b.dat"
             , line colLightBluishGray -60 -8 60 straightM "3068b.dat"
             , line colLightBluishGray 60 -8 60 straightM "3068b.dat"
-            , -- White crosswalk stripes
-              line colWhite -10 -16 -30 straightM "3070b.dat"
-            , line colWhite 10 -16 -30 straightM "3070b.dat"
-            , line colWhite -10 -16 30 straightM "3070b.dat"
-            , line colWhite 10 -16 30 straightM "3070b.dat"
-            , line colWhite -30 -16 -10 straightM "3070b.dat"
-            , line colWhite -30 -16 10 straightM "3070b.dat"
-            , line colWhite 30 -16 -10 straightM "3070b.dat"
-            , line colWhite 30 -16 10 straightM "3070b.dat"
+            , -- Inlaid asphalt transition corners
+              line colBlack -30 -8 -30 straightM "3070b.dat"
+            , line colBlack 30 -8 -30 straightM "3070b.dat"
+            , line colBlack -30 -8 30 straightM "3070b.dat"
+            , line colBlack 30 -8 30 straightM "3070b.dat"
+            , -- Inlaid white crosswalk stripes
+              line colWhite -10 -8 -30 straightM "3070b.dat"
+            , line colWhite 10 -8 -30 straightM "3070b.dat"
+            , line colWhite -10 -8 30 straightM "3070b.dat"
+            , line colWhite 10 -8 30 straightM "3070b.dat"
+            , line colWhite -30 -8 -10 straightM "3070b.dat"
+            , line colWhite -30 -8 10 straightM "3070b.dat"
+            , line colWhite 30 -8 -10 straightM "3070b.dat"
+            , line colWhite 30 -8 10 straightM "3070b.dat"
             ]
         }
 

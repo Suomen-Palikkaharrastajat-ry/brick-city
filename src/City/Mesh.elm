@@ -33,7 +33,7 @@ Performance architecture:
     once in local space and reused across all lots in the city, eliminating
     redundant recursive subfile walks and primitive normal computations.
 3.  **Dual-LOD lot meshes**: Each `LotMesh` uploads both a foreground
-    `BoxStuds` surface mesh (`triangleMesh`) + edge mesh (`lineMesh`, with
+    `FullStuds` surface mesh (`triangleMesh`) + edge mesh (`lineMesh`, with
     zero conditional lines) and a lightweight `NoStuds` surface mesh
     (`lodTriangleMesh`) for distant/background city blocks.
 4.  **Detail-aware BFC CCW certification**: Back-face culling
@@ -147,14 +147,14 @@ emptyLotDocument =
 
 
 {-| Fast foreground city-scale geometry detail options: Y-up conversion,
-`BoxStuds` (10 triangles per stud instead of 100+), no underside hollows,
+`FullStuds` (16-facet cylindrical studs), no underside hollows,
 crisp edges, and no conditional lines.
 -}
 detailOptions : Geometry.DetailOptions
 detailOptions =
     { flipYZ = True
     , trackInherit = False
-    , studs = Geometry.BoxStuds
+    , studs = Geometry.FullStuds
     , includeHollows = False
     , includeLines = True
     , includeConditionals = False
@@ -179,7 +179,7 @@ localDetailOptions : Geometry.DetailOptions
 localDetailOptions =
     { flipYZ = False
     , trackInherit = True
-    , studs = Geometry.BoxStuds
+    , studs = Geometry.FullStuds
     , includeHollows = False
     , includeLines = True
     , includeConditionals = False

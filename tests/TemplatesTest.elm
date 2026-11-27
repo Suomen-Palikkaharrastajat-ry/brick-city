@@ -19,6 +19,7 @@ import City.Templates as Templates exposing (Template)
 import City.Types exposing (BoundsIssue)
 import EmbeddedParts
 import Expect
+import LDraw.Connectivity as Connectivity
 import LDraw.Document as Document exposing (Document, Placement)
 import Math.Matrix4 as Mat4
 import Math.Vector3 as Vec3 exposing (vec3)
@@ -57,9 +58,9 @@ suite =
                             |> List.map (\t -> ( t.id, t.partCount, t.heightPlates ))
                 in
                 Expect.equal
-                    [ ( "straight-road", 18, 5 )
-                    , ( "corner-road", 15, 5 )
-                    , ( "intersection", 21, 2 )
+                    [ ( "straight-road", 25, 5 )
+                    , ( "corner-road", 16, 5 )
+                    , ( "intersection", 22, 1 )
                     , ( "micro-house", 15, 9 )
                     , ( "high-rise", 14, 19 )
                     , ( "skyscraper", 17, 29 )
@@ -183,7 +184,61 @@ templateLegalityTest tmpl =
         , test "Studio.Health finds zero overlapping parts" <|
             \_ ->
                 Expect.equal [] overlappingIssues
+        , test "every non-baseplate part connects to studs below" <|
+            \_ ->
+                let
+                    unconnected =
+                        placements
+                            |> List.filter (\p -> not (Editor.isBaseplatePlacement p))
+                            |> List.filter (\p -> not (hasStudConnection placements p))
+                            |> List.map
+                                (\p ->
+                                    let
+                                        pos =
+                                            Mat4.transform p.matrix (vec3 0 0 0) |> Vec3.toRecord
+                                    in
+                                    ( p.part, p.id, ( pos.x, pos.y, pos.z ) )
+                                )
+                in
+                Expect.equal [] unconnected
         ]
+
+
+hasStudConnection : List Placement -> Placement -> Bool
+hasStudConnection allPlacements p =
+    let
+        pConn =
+            Connectivity.extractPartConnectivity p.part (\_ -> Nothing)
+
+        pAntiStuds =
+            pConn.connections
+                |> List.filter (\c -> c.connType == Connectivity.AntiStud)
+                |> List.map (Connectivity.transformPoint p.matrix p.id)
+
+        otherStuds =
+            allPlacements
+                |> List.filter (\q -> q.id /= p.id)
+                |> List.concatMap
+                    (\q ->
+                        let
+                            qConn =
+                                Connectivity.extractPartConnectivity q.part (\_ -> Nothing)
+                        in
+                        qConn.connections
+                            |> List.filter (\c -> c.connType == Connectivity.Stud)
+                            |> List.map (Connectivity.transformPoint q.matrix q.id)
+                    )
+    in
+    List.any
+        (\anti ->
+            List.any
+                (\stud ->
+                    (Vec3.length (Vec3.sub anti.worldPosition stud.worldPosition) <= 0.5)
+                        && (Vec3.dot anti.worldNormal stud.worldNormal < -0.7)
+                )
+                otherStuds
+        )
+        pAntiStuds
 
 
 isKnownPart : String -> Bool

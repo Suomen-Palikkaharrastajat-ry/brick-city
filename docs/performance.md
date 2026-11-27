@@ -43,7 +43,7 @@ In naive WebGL renderers:
 
 ### 2.3 Dual-LOD Meshes & Stud Culling
 - Every `LotMesh` generates two surface meshes:
-  1. `triangleMesh`: Full-fidelity mesh with studs (`BoxStuds`, 10 tris per stud vs 100+ for cylinders) and micro-edge bevels for foreground inspection.
+  1. `triangleMesh`: Full-fidelity mesh with round LEGO studs (`FullStuds`, 16-facet cylinders from `stud.dat`) and edge lines for foreground inspection and editor view.
   2. `lodTriangleMesh`: Low-detail mesh (`NoStuds`, flat tops) that skips stud cylinders and hollow underside primitives entirely.
 - **Distance & Screen-Space Switching**:
   - `City.Render.lotDetailFor` evaluates lot camera distance and projected screen height (`projScaleY`).
