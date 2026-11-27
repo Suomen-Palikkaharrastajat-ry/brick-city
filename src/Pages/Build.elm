@@ -1079,6 +1079,9 @@ topBar model heightPlates hasViolations =
         lang =
             model.language
 
+        measured =
+            model.measuredBounds
+
         heightPct =
             min 100 (max 0 (round (toFloat heightPlates / toFloat Bounds.maxHeightPlates * 100)))
 
@@ -1107,6 +1110,12 @@ topBar model heightPlates hasViolations =
 
         coordTag =
             "(" ++ String.fromInt (model.coord.col + 1) ++ "," ++ String.fromInt (model.coord.row + 1) ++ ")"
+
+        tidyCount =
+            List.length model.tidyFixes
+
+        hasTidyFixes =
+            tidyCount > 0
     in
     div
         [ Attr.class "absolute top-0 left-0 right-0 z-30 flex flex-wrap items-center justify-between gap-2 p-2.5 sm:p-3 pointer-events-none"
@@ -1152,6 +1161,69 @@ topBar model heightPlates hasViolations =
             ]
         , div [ Attr.class "pointer-events-auto flex items-center gap-1.5 ml-auto" ]
             [ button
+                [ Attr.type_ "button"
+                , onClick TidyUp
+                , Attr.attribute "data-testid" "top-tidy-button"
+                , Attr.title
+                    (if hasTidyFixes then
+                        T.tidyUpLabel lang ++ " (" ++ String.fromInt tidyCount ++ ")"
+
+                     else
+                        T.tidyUpCleanLabel lang
+                    )
+                , Attr.attribute "aria-label"
+                    (if hasTidyFixes then
+                        T.tidyUpLabel lang ++ " (" ++ String.fromInt tidyCount ++ ")"
+
+                     else
+                        T.tidyUpCleanLabel lang
+                    )
+                , Attr.disabled (not hasTidyFixes)
+                , Attr.class
+                    ("touch-target inline-flex items-center gap-1.5 h-10 px-2.5 sm:px-3 rounded-full border text-xs font-extrabold whitespace-nowrap shrink-0 transition-all "
+                        ++ (if hasTidyFixes then
+                                "bg-brand-yellow border-brand-yellow text-brand cursor-pointer shadow-lg animate-pulse"
+
+                            else
+                                "bg-slate-900/80 border-white/15 text-slate-400 opacity-60 cursor-default"
+                           )
+                    )
+                ]
+                [ (if hasTidyFixes then
+                    FeatherIcons.crosshair
+
+                   else
+                    FeatherIcons.checkCircle
+                  )
+                    |> FeatherIcons.withSize 14
+                    |> FeatherIcons.toHtml []
+                , span [ Attr.class "hidden lg:inline" ]
+                    [ text
+                        (if hasTidyFixes then
+                            T.tidyUpLabel lang ++ " (" ++ String.fromInt tidyCount ++ ")"
+
+                         else
+                            T.tidyUpLabel lang
+                        )
+                    ]
+                , if hasTidyFixes then
+                    span [ Attr.class "lg:hidden font-mono" ] [ text (String.fromInt tidyCount) ]
+
+                  else
+                    text ""
+                ]
+            , div
+                [ Attr.class "inline-flex items-center gap-1.5 h-10 px-2.5 sm:px-3 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/15 shadow-lg shrink-0"
+                , Attr.attribute "data-testid" "part-counter"
+                , Attr.title (T.editorPartsLabel lang measured.partCount)
+                , Attr.attribute "aria-label" (T.editorPartsLabel lang measured.partCount)
+                ]
+                [ span [ Attr.class "text-slate-400 shrink-0" ]
+                    [ FeatherIcons.box |> FeatherIcons.withSize 13 |> FeatherIcons.toHtml [] ]
+                , span [ Attr.class "text-xs font-mono font-bold text-white tabular-nums" ]
+                    [ text (String.fromInt measured.partCount ++ " " ++ T.tr lang "pcs" "kpl") ]
+                ]
+            , button
                 [ Attr.type_ "button"
                 , onClick (SelectTab LimitsTab)
                 , Attr.attribute "data-testid" "height-indicator"
@@ -1280,9 +1352,9 @@ dockHeaderRow model =
                 , Attr.attribute "data-testid" testId
                 , Attr.attribute "aria-pressed" (boolAttr active)
                 , Attr.class
-                    ("px-3 h-8 rounded-full text-xs font-bold whitespace-nowrap cursor-pointer transition-all "
+                    ("touch-target px-3 h-8 sm:h-9 rounded-full text-xs font-bold whitespace-nowrap cursor-pointer transition-all "
                         ++ (if active then
-                                "bg-brand-yellow text-brand shadow-sm"
+                                "bg-brand-yellow text-brand shadow-sm font-extrabold"
 
                             else
                                 "text-slate-300 hover:text-white hover:bg-white/10"
@@ -1327,6 +1399,7 @@ dockActionToolbar model showPartTools =
         [ toolButton "undo-button" (T.tr lang "Undo" "Kumoa") FeatherIcons.cornerUpLeft (enabledIf (Core.canUndo model.studio) Undo)
         , toolButton "redo-button" (T.tr lang "Redo" "Tee uudelleen") FeatherIcons.cornerUpRight (enabledIf (Core.canRedo model.studio) Redo)
         , tidyUpButton lang tidyCount
+        , boundsSafetyBadge model
         , span [ Attr.class "w-px h-5 bg-white/15 mx-0.5 shrink-0" ] []
         , toolButton "turn-left-button" (T.tr lang "Turn left" "Käännä vasemmalle") FeatherIcons.rotateCcw (enabledIf (hasSelection && not onBase) (Turn TurnLeft))
         , toolButton "turn-right-button" (T.tr lang "Turn right" "Käännä oikealle") FeatherIcons.rotateCw (enabledIf (hasSelection && not onBase) (Turn TurnRight))
@@ -1360,6 +1433,50 @@ dockActionToolbar model showPartTools =
 
           else
             text ""
+        ]
+
+
+boundsSafetyBadge : Model -> Html Msg
+boundsSafetyBadge model =
+    let
+        lang =
+            model.language
+
+        hasViolation =
+            model.hasBoundsViolation
+
+        nearCeiling =
+            model.measuredBounds.heightPlates >= 28
+
+        ( icon, textLabel, badgeClass ) =
+            if hasViolation then
+                ( FeatherIcons.alertTriangle
+                , T.boundsExceededShort lang
+                , "bg-rose-500/20 border-rose-400/50 text-rose-300 hover:bg-rose-500/30"
+                )
+
+            else if nearCeiling then
+                ( FeatherIcons.alertCircle
+                , T.boundsCeilingShort lang
+                , "bg-amber-500/20 border-amber-400/50 text-amber-300 hover:bg-amber-500/30"
+                )
+
+            else
+                ( FeatherIcons.shield
+                , T.boundsSafeShort lang
+                , "bg-emerald-500/15 border-emerald-400/30 text-emerald-300 hover:bg-emerald-500/25"
+                )
+    in
+    button
+        [ Attr.type_ "button"
+        , onClick (SelectTab LimitsTab)
+        , Attr.attribute "data-testid" "bounds-safety-indicator"
+        , Attr.title (T.editorBoundsOk lang)
+        , Attr.attribute "aria-label" (T.editorBoundsOk lang)
+        , Attr.class ("touch-target inline-flex items-center gap-1.5 h-9 px-2.5 rounded-full border text-xs font-bold cursor-pointer transition-all shrink-0 " ++ badgeClass)
+        ]
+        [ icon |> FeatherIcons.withSize 13 |> FeatherIcons.toHtml []
+        , span [ Attr.class "hidden sm:inline font-mono text-[11px]" ] [ text textLabel ]
         ]
 
 

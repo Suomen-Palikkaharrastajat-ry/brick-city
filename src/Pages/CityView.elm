@@ -223,7 +223,7 @@ topHud cityName room stats audioMuted lang actions =
                 , Attr.attribute "data-testid" "nav-menu-button"
                 , Attr.title (T.menuButton lang)
                 , Attr.attribute "aria-label" (T.menuButton lang)
-                , Attr.class "touch-target inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-white/10 hover:bg-brand-yellow hover:text-brand text-xs font-extrabold text-white cursor-pointer transition-colors shrink-0"
+                , Attr.class "touch-target inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full bg-white/10 hover:bg-brand-yellow hover:text-brand text-xs font-extrabold text-white cursor-pointer transition-colors shrink-0"
                 ]
                 [ img [ Attr.src "/favicon.svg", Attr.alt "", Attr.class "w-4 h-4 rounded-full shrink-0" ] []
                 , span [ Attr.class "hidden sm:inline" ] [ text (T.menuButton lang) ]
@@ -234,7 +234,7 @@ topHud cityName room stats audioMuted lang actions =
                 , onInput actions.onCityNameChanged
                 , Attr.attribute "aria-label" (T.cityNameLabel lang)
                 , Attr.attribute "data-testid" "city-name-input"
-                , Attr.class "w-28 sm:w-36 bg-transparent border-b border-transparent focus:border-brand-yellow hover:border-white/25 outline-none text-xs sm:text-sm font-extrabold text-white truncate"
+                , Attr.class "w-24 sm:w-36 bg-transparent border-b border-transparent focus:border-brand-yellow hover:border-white/25 outline-none text-xs sm:text-sm font-extrabold text-white truncate"
                 ]
                 []
             , span [ Attr.class "text-slate-400 hidden sm:inline shrink-0" ]
@@ -246,6 +246,8 @@ topHud cityName room stats audioMuted lang actions =
                 [ Attr.type_ "button"
                 , onClick (actions.onToggleModal CollabModal)
                 , Attr.attribute "data-testid" "collab-modal-button"
+                , Attr.title (T.roomSharingTab lang)
+                , Attr.attribute "aria-label" (T.roomSharingTab lang)
                 , Attr.class
                     ("touch-target inline-flex items-center gap-1.5 h-10 px-3 rounded-full border backdrop-blur-md text-xs font-extrabold cursor-pointer shadow-lg transition-all "
                         ++ (if isCollab then
@@ -285,6 +287,8 @@ topHud cityName room stats audioMuted lang actions =
                     [ Attr.type_ "button"
                     , onClick actions.onToggleLanguage
                     , Attr.attribute "data-testid" "language-toggle-button"
+                    , Attr.title (T.tr lang "Switch language to Finnish" "Vaihda kieleksi englanti")
+                    , Attr.attribute "aria-label" (T.tr lang "Switch language" "Vaihda kieli")
                     , Attr.class "touch-target h-8 px-2.5 rounded-full text-xs font-black text-slate-200 cursor-pointer hover:text-brand-yellow hover:bg-white/10 transition-colors"
                     ]
                     [ text
@@ -299,6 +303,7 @@ topHud cityName room stats audioMuted lang actions =
                 , button
                     [ Attr.type_ "button"
                     , onClick actions.onToggleMute
+                    , Attr.attribute "data-testid" "mute-toggle-button"
                     , Attr.title (T.muteLabel lang audioMuted)
                     , Attr.attribute "aria-label" (T.muteLabel lang audioMuted)
                     , Attr.class "touch-target w-8 h-8 flex items-center justify-center rounded-full text-slate-200 cursor-pointer hover:text-brand-yellow hover:bg-white/10 transition-colors"
@@ -320,10 +325,12 @@ topHud cityName room stats audioMuted lang actions =
 statsPill : Language -> City.Types.CityStats -> Html msg
 statsPill lang stats =
     let
-        statItem icon colorHex label value =
+        statItem icon colorHex label value testId =
             div
                 [ Attr.class "inline-flex items-center gap-1.5"
                 , Attr.title (label ++ ": " ++ value)
+                , Attr.attribute "aria-label" (label ++ ": " ++ value)
+                , Attr.attribute "data-testid" testId
                 ]
                 [ span [ Attr.style "color" colorHex, Attr.class "shrink-0" ]
                     [ icon |> FeatherIcons.withSize 13 |> FeatherIcons.toHtml [] ]
@@ -341,13 +348,13 @@ statsPill lang stats =
             [ Attr.class "inline-flex items-center gap-2.5 sm:gap-3 h-9 sm:h-10 px-3.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/15 shadow-lg text-xs"
             , Attr.attribute "data-testid" "city-stats-bar"
             ]
-            [ statItem FeatherIcons.users Brand.rainbowBrightLightBlue (T.statPopulation lang) (String.fromInt stats.population)
+            [ statItem FeatherIcons.users Brand.rainbowBrightLightBlue (T.statPopulation lang) (String.fromInt stats.population) "stat-population"
             , divider
-            , statItem FeatherIcons.home Brand.legoYellow (T.statBuildings lang) (String.fromInt stats.buildings)
+            , statItem FeatherIcons.home Brand.legoYellow (T.statBuildings lang) (String.fromInt stats.buildings) "stat-buildings"
             , divider
-            , statItem FeatherIcons.sun Brand.rainbowMediumGreen (T.statGreen lang) (String.fromInt stats.parks ++ "%")
+            , statItem FeatherIcons.sun Brand.rainbowMediumGreen (T.statGreen lang) (String.fromInt stats.parks ++ "%") "stat-green"
             , divider
-            , statItem FeatherIcons.award Brand.rainbowLightOrange (T.statScore lang) (String.fromInt stats.score)
+            , statItem FeatherIcons.award Brand.rainbowLightOrange (T.statScore lang) (String.fromInt stats.score) "stat-score"
             ]
         ]
 
@@ -402,7 +409,7 @@ bottomActionBar activeMode city selectedLot hasClipboard lang actions =
                 , Attr.title fullLabel
                 , Attr.attribute "aria-label" fullLabel
                 , Attr.class
-                    ("touch-target inline-flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-full text-xs font-bold cursor-pointer transition-all shrink-0 "
+                    ("touch-target inline-flex items-center gap-1.5 h-8 sm:h-9 px-2.5 sm:px-3 rounded-full text-xs font-bold cursor-pointer transition-all shrink-0 "
                         ++ (if active then
                                 "bg-brand-yellow text-brand shadow-sm font-extrabold"
 
@@ -411,13 +418,16 @@ bottomActionBar activeMode city selectedLot hasClipboard lang actions =
                            )
                     )
                 ]
-                [ icon |> FeatherIcons.withSize 15 |> FeatherIcons.toHtml []
+                [ icon |> FeatherIcons.withSize 14 |> FeatherIcons.toHtml []
                 , span [ Attr.class "hidden sm:inline" ] [ text shortLabel ]
                 ]
 
         selectedElement =
             selectedLot
                 |> Maybe.andThen (\coord -> Dict.get ( coord.row, coord.col ) city.lots)
+
+        isBuilt =
+            selectedElement /= Nothing
 
         barIconBtn label icon msg testId enabled =
             button
@@ -450,17 +460,25 @@ bottomActionBar activeMode city selectedLot hasClipboard lang actions =
             [ Attr.attribute "data-testid" "city-bottom-bar"
             , Attr.class "pointer-events-auto inline-flex items-center gap-1 p-1.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/15 shadow-2xl max-w-full overflow-x-auto palette-scroll-x"
             ]
-            [ modeBtn OrbitMode "camera-mode-orbit" FeatherIcons.globe (T.modeOrbitLabel lang) (T.modeOrbitLabel lang)
-            , modeBtn WalkMode "toggle-walk-button" FeatherIcons.compass (T.modeWalkLabel lang) (T.modeWalkShort lang)
-            , modeBtn TopDownMode "camera-mode-topdown" FeatherIcons.map (T.modeTopDownLabel lang) (T.modeTopDownShort lang)
+            [ div
+                [ Attr.class "inline-flex items-center gap-0.5 p-0.5 rounded-full bg-slate-950/60 border border-white/10 shrink-0"
+                , Attr.attribute "role" "group"
+                , Attr.attribute "aria-label" (T.tr lang "Camera navigation" "Kameran navigointi")
+                ]
+                [ modeBtn OrbitMode "camera-mode-orbit" FeatherIcons.globe (T.modeOrbitLabel lang) (T.modeOrbitLabel lang)
+                , modeBtn WalkMode "toggle-walk-button" FeatherIcons.compass (T.modeWalkLabel lang) (T.modeWalkShort lang)
+                , modeBtn TopDownMode "camera-mode-topdown" FeatherIcons.map (T.modeTopDownLabel lang) (T.modeTopDownShort lang)
+                ]
             , span [ Attr.class "w-px h-5 bg-white/15 mx-0.5 shrink-0" ] []
             , barIconBtn (T.fitViewLabel lang) FeatherIcons.maximize actions.onGlobeReset "camera-fit-button" True
             , case selectedLot of
                 Just _ ->
                     div [ Attr.class "inline-flex items-center gap-0.5 pl-1 ml-0.5 border-l border-white/15 shrink-0" ]
-                        [ barIconBtn (T.actionBuildElement lang (selectedElement /= Nothing)) FeatherIcons.tool actions.onEditSelectedLot "bar-edit-lot-button" True
-                        , barIconBtn (T.actionRotateLot lang) FeatherIcons.rotateCw actions.onRotateSelectedLot "bar-rotate-lot-button" (selectedElement /= Nothing)
+                        [ barIconBtn (T.actionBuildElement lang isBuilt) FeatherIcons.tool actions.onEditSelectedLot "bar-edit-lot-button" True
+                        , barIconBtn (T.actionRotateLot lang) FeatherIcons.rotateCw actions.onRotateSelectedLot "bar-rotate-lot-button" isBuilt
+                        , barIconBtn (T.actionCopyLot lang) FeatherIcons.copy actions.onCopySelectedLot "bar-copy-lot-button" isBuilt
                         , barIconBtn (T.actionPasteLot lang) FeatherIcons.clipboard actions.onPasteSelectedLot "bar-paste-lot-button" hasClipboard
+                        , barIconBtn (T.deselectLotLabel lang) FeatherIcons.x actions.onDeselectLot "bar-close-lot-button" True
                         ]
 
                 Nothing ->
@@ -646,14 +664,26 @@ quickLotBtn label icon msg testId enabled danger =
 
 templateQuickButton : Language -> (Template -> msg) -> Template -> Html msg
 templateQuickButton lang onStamp tmpl =
+    let
+        title =
+            T.tr lang tmpl.nameEn tmpl.nameFi
+
+        desc =
+            T.tr lang tmpl.descriptionEn tmpl.descriptionFi
+
+        tip =
+            title ++ " (" ++ String.fromInt tmpl.heightPlates ++ "/32) • " ++ desc
+    in
     button
         [ Attr.type_ "button"
         , onClick (onStamp tmpl)
+        , Attr.title tip
+        , Attr.attribute "aria-label" tip
         , Attr.attribute "data-testid" ("stamp-" ++ tmpl.id)
-        , Attr.class "px-2 py-1.5 rounded-xl bg-slate-800/80 border border-white/10 hover:border-brand-yellow/60 text-left cursor-pointer transition-all"
+        , Attr.class "touch-target px-2 py-1.5 rounded-xl bg-slate-800/80 border border-white/10 hover:border-brand-yellow/60 text-left cursor-pointer transition-all active:scale-95"
         ]
         [ p [ Attr.class "text-[11px] font-bold text-slate-100 truncate" ]
-            [ text (T.tr lang tmpl.nameEn tmpl.nameFi) ]
+            [ text title ]
         , span [ Attr.class "text-[10px] font-mono text-sky-300" ]
             [ text (String.fromInt tmpl.heightPlates ++ "/32") ]
         ]

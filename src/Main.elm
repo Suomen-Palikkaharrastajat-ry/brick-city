@@ -257,7 +257,7 @@ init flags =
             CityI18n.defaultCityName lang
 
         defaultPreviewCity =
-            Templates.cityFromPreset lang HarborTown defaultMenuName 4
+            Templates.cityFromPreset lang GridMetropolis defaultMenuName 4
 
         activeCity =
             case decodedSaved of
@@ -334,7 +334,7 @@ init flags =
             , menuCityName = defaultMenuName
             , menuCityNameEdited = False
             , menuGridSize = 4
-            , menuPreset = HarborTown
+            , menuPreset = GridMetropolis
             , menuPreviewSource = initialPreviewSource
             , menuPreviewCity = defaultPreviewCity
             , menuCamera = Render.resetCameraForCity initialPreview 768
@@ -1834,6 +1834,13 @@ subscriptions model =
                     [ Browser.Events.onKeyDown nonInputKeyDownDecoder
                     , Browser.Events.onKeyUp (Decode.field "key" Decode.string |> Decode.map KeyUp)
                     ]
+
+            ( MainMenuPage, _ ) ->
+                if model.menuDragging then
+                    Browser.Events.onMouseUp (Decode.succeed MenuCanvasMouseUp)
+
+                else
+                    Sub.none
 
             _ ->
                 Sub.none

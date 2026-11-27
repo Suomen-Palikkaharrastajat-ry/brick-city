@@ -5,11 +5,11 @@ module TemplatesTest exposing (suite)
 Each starter element build is verified build-by-build for:
 
   - Strict 8x8 stud footprint (within -80..80 LDU in X and Z)
-  - Strict height limit of 32 plates (within 0..256 LDU)
+  - Strict height limit of 32 plates (within 0..256 LDU, topBodyY >= -256)
   - Intact 8x8 baseplate (`41539.dat`) at ground level (0, 0, 0)
   - Matching part count and declared height
-  - Build health: no misaligned parts and no overlapping parts via `Studio.Health`
-  - Valid catalog parts from the curated microscale palette
+  - Build health: zero misaligned parts and zero overlapping parts via `Studio.Health`
+  - Valid catalog parts from the curated microscale palette (`Editor.parts`)
 
 -}
 
@@ -30,9 +30,44 @@ import Test exposing (Test, describe, test)
 suite : Test
 suite =
     describe "Starter Templates Legality (Build by Build)"
-        [ test "all 9 templates are registered in Templates.all" <|
+        [ test "all 9 templates are registered in Templates.all with expected IDs" <|
             \_ ->
-                Expect.equal 9 (List.length Templates.all)
+                let
+                    expectedIds =
+                        [ "straight-road"
+                        , "corner-road"
+                        , "intersection"
+                        , "micro-house"
+                        , "high-rise"
+                        , "skyscraper"
+                        , "central-park"
+                        , "industrial-plant"
+                        , "waterfront-canal"
+                        ]
+
+                    actualIds =
+                        List.map .id Templates.all
+                in
+                Expect.equal expectedIds actualIds
+        , test "all 9 starter templates have exact expected part counts and heights" <|
+            \_ ->
+                let
+                    metrics =
+                        Templates.all
+                            |> List.map (\t -> ( t.id, t.partCount, t.heightPlates ))
+                in
+                Expect.equal
+                    [ ( "straight-road", 18, 5 )
+                    , ( "corner-road", 15, 5 )
+                    , ( "intersection", 21, 2 )
+                    , ( "micro-house", 15, 9 )
+                    , ( "high-rise", 14, 19 )
+                    , ( "skyscraper", 17, 29 )
+                    , ( "central-park", 23, 9 )
+                    , ( "industrial-plant", 17, 10 )
+                    , ( "waterfront-canal", 20, 9 )
+                    ]
+                    metrics
         , describe "Individual template legality checks"
             (List.map templateLegalityTest Templates.all)
         ]
@@ -49,9 +84,39 @@ templateLegalityTest tmpl =
         placements =
             Document.mainPlacements doc
 
+        bounds : Bounds.DocumentBounds
+        bounds =
+            Bounds.documentBounds doc
+
         healthIssues : List Health.Issue
         healthIssues =
             Health.check EmbeddedParts.cache doc Set.empty
+
+        misalignedIssues : List Health.Issue
+        misalignedIssues =
+            List.filter
+                (\issue ->
+                    case issue of
+                        Health.Misaligned _ ->
+                            True
+
+                        Health.Overlapping _ ->
+                            False
+                )
+                healthIssues
+
+        overlappingIssues : List Health.Issue
+        overlappingIssues =
+            List.filter
+                (\issue ->
+                    case issue of
+                        Health.Overlapping _ ->
+                            True
+
+                        Health.Misaligned _ ->
+                            False
+                )
+                healthIssues
     in
     describe ("Template: " ++ tmpl.id ++ " (" ++ tmpl.nameEn ++ ")")
         [ test "passes Bounds.validateDocument with declared metrics" <|
@@ -68,7 +133,24 @@ templateLegalityTest tmpl =
 
                     Err issues ->
                         Expect.fail ("Bounds validation failed: " ++ Debug.toString issues)
-        , test "starts with an 8x8 baseplate (41539.dat) at (0, 0, 0)" <|
+        , test "strictly complies with 8x8 stud footprint [-80..80] LDU in X and Z" <|
+            \_ ->
+                Expect.all
+                    [ \_ -> Expect.greaterThan -80.5 bounds.minX
+                    , \_ -> Expect.lessThan 80.5 bounds.maxX
+                    , \_ -> Expect.greaterThan -80.5 bounds.minZ
+                    , \_ -> Expect.lessThan 80.5 bounds.maxZ
+                    , \_ -> Expect.equal Set.empty (Bounds.violatingPlacementIds doc)
+                    ]
+                    ()
+        , test "strictly complies with height limit <= 32 plates (<= 256.0 LDU)" <|
+            \_ ->
+                Expect.all
+                    [ \_ -> Expect.atMost 32 bounds.heightPlates
+                    , \_ -> Expect.greaterThan -256.5 bounds.topBodyY
+                    ]
+                    ()
+        , test "starts with an intact 8x8 baseplate (41539.dat) at (0, 0, 0)" <|
             \_ ->
                 case List.head placements of
                     Just baseplate ->
@@ -86,7 +168,7 @@ templateLegalityTest tmpl =
 
                     Nothing ->
                         Expect.fail "Missing baseplate"
-        , test "all parts belong to the catalog or embedded parts" <|
+        , test "every part belongs to Editor.parts or is the 8x8 baseplate" <|
             \_ ->
                 let
                     unknownParts =
@@ -95,68 +177,16 @@ templateLegalityTest tmpl =
                             |> List.filter (\part -> not (isKnownPart part))
                 in
                 Expect.equal [] unknownParts
-        , test "Studio.Health finds no overlapping or misaligned parts" <|
+        , test "Studio.Health finds zero misaligned parts" <|
             \_ ->
-                Expect.equal [] healthIssues
+                Expect.equal [] misalignedIssues
+        , test "Studio.Health finds zero overlapping parts" <|
+            \_ ->
+                Expect.equal [] overlappingIssues
         ]
 
 
 isKnownPart : String -> Bool
 isKnownPart part =
-    List.any (\entry -> entry.file == part) Editor.parts
-        || part
-        == "41539.dat"
-        || part
-        == "3001.dat"
-        || part
-        == "3004.dat"
-        || part
-        == "3005.dat"
-        || part
-        == "3020.dat"
-        || part
-        == "3022.dat"
-        || part
-        == "3023.dat"
-        || part
-        == "3024.dat"
-        || part
-        == "3062b.dat"
-        || part
-        == "3069b.dat"
-        || part
-        == "3941.dat"
-        || part
-        == "4589.dat"
-        || part
-        == "4740.dat"
-        || part
-        == "6141.dat"
-        || part
-        == "2412b.dat"
-        || part
-        == "2877.dat"
-        || part
-        == "3659.dat"
-        || part
-        == "3665.dat"
-        || part
-        == "3665b.dat"
-        || part
-        == "4032b.dat"
-        || part
-        == "54200.dat"
-        || part
-        == "85861.dat"
-        || part
-        == "85984.dat"
-        || part
-        == "87079.dat"
-        || part
-        == "98283.dat"
-        || part
-        == "24866.dat"
-        || part
-        == "2431.dat"
-        || part
-        == "3039.dat"
+    (part == "41539.dat")
+        || List.any (\entry -> entry.file == part) Editor.parts

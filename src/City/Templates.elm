@@ -144,9 +144,9 @@ type CityPreset
 -}
 allPresets : List CityPreset
 allPresets =
-    [ HarborTown
-    , GridMetropolis
+    [ GridMetropolis
     , GreenValley
+    , HarborTown
     , BlankCanvas
     ]
 
@@ -156,17 +156,17 @@ allPresets =
 presetId : CityPreset -> String
 presetId preset =
     case preset of
-        HarborTown ->
-            "harbor-town"
-
         GridMetropolis ->
             "grid-metropolis"
 
         GreenValley ->
             "green-valley"
 
+        HarborTown ->
+            "coastal-bay"
+
         BlankCanvas ->
-            "blank-canvas"
+            "sandbox-plain"
 
 
 {-| Generate a `CityGrid` from a starter layout preset, city name, and grid

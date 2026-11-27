@@ -11,7 +11,10 @@ module City.I18n exposing
     , actionPasteLot
     , actionRotateLot
     , actionStarterTown
+    , boundsCeilingShort
+    , boundsExceededShort
     , boundsIssueText
+    , boundsSafeShort
     , builderNameLabel
     , buildersHeading
     , cancelButton
@@ -26,6 +29,7 @@ module City.I18n exposing
     , continueGameButton
     , copyInviteLink
     , defaultCityName
+    , deselectLotLabel
     , disconnectedLabel
     , dragOrbitHint
     , editorBoundsOk
@@ -86,7 +90,9 @@ module City.I18n exposing
     , starterLayoutLabel
     , statBuildings
     , statGreen
+    , statLots
     , statPeak
+    , statPieces
     , statPopulation
     , statRoads
     , statScore
@@ -197,6 +203,20 @@ statBuildings lang =
 statGreen : Language -> String
 statGreen lang =
     tr lang "Green" "Vihreää"
+
+
+{-| Stat label: Lots.
+-}
+statLots : Language -> String
+statLots lang =
+    tr lang "Lots" "Tontit"
+
+
+{-| Stat label: Pieces.
+-}
+statPieces : Language -> String
+statPieces lang =
+    tr lang "Pieces" "Palat"
 
 
 {-| Stat label: Road links.
@@ -570,6 +590,34 @@ boundsIssueText lang issue =
             tr lang "Part extends below the baseplate." "Pala ulottuu pohjalevyn alapuolelle."
 
 
+{-| Short status label: 8x8 bounds safe.
+-}
+boundsSafeShort : Language -> String
+boundsSafeShort lang =
+    tr lang "8×8 Safe" "8×8 Kunnossa"
+
+
+{-| Short status label: Near 32-plate height ceiling.
+-}
+boundsCeilingShort : Language -> String
+boundsCeilingShort lang =
+    tr lang "Near ceiling" "Katto lähellä"
+
+
+{-| Short status label: Bounds exceeded.
+-}
+boundsExceededShort : Language -> String
+boundsExceededShort lang =
+    tr lang "Over limits" "Rajat ylitetty"
+
+
+{-| Action label to deselect current lot.
+-}
+deselectLotLabel : Language -> String
+deselectLotLabel lang =
+    tr lang "Deselect" "Poista valinta"
+
+
 {-| Paste build link prompt.
 -}
 pasteBuildHint : Language -> String
@@ -781,7 +829,7 @@ cityNameSuggestions lang =
 -}
 continueGameButton : Language -> String
 continueGameButton lang =
-    tr lang "Continue Game" "Jatka peliä"
+    tr lang "Continue City" "Jatka peliä"
 
 
 {-| Overline badge on the saved-city card.
@@ -917,17 +965,17 @@ startBuildingButton lang =
 presetTitle : Language -> CityPreset -> String
 presetTitle lang preset =
     case preset of
-        HarborTown ->
-            tr lang "Harbor Town" "Rantakaupunki"
-
         GridMetropolis ->
             tr lang "Grid Metropolis" "Ruutukaava"
 
         GreenValley ->
             tr lang "Green Valley" "Vihreä laakso"
 
+        HarborTown ->
+            tr lang "Coastal Bay" "Rantakaupunki"
+
         BlankCanvas ->
-            tr lang "Blank Canvas" "Tyhjä tonttimaa"
+            tr lang "Sandbox Plain" "Tyhjä tonttimaa"
 
 
 {-| Short description for a starter city layout preset.
@@ -935,11 +983,6 @@ presetTitle lang preset =
 presetDescription : Language -> CityPreset -> String
 presetDescription lang preset =
     case preset of
-        HarborTown ->
-            tr lang
-                "Canal, roads, park, houses, and skyscraper"
-                "Kanaali, tiet, puisto, talot ja pilvenpiirtäjä"
-
         GridMetropolis ->
             tr lang
                 "Perimeter and cross roads with zoned lots"
@@ -950,10 +993,15 @@ presetDescription lang preset =
                 "Central park and canal with green lots"
                 "Keskuspuisto, kanaali ja vehreät tontit"
 
+        HarborTown ->
+            tr lang
+                "Canal, roads, park, houses, and skyscraper"
+                "Kanaali, tiet, puisto, talot ja pilvenpiirtäjä"
+
         BlankCanvas ->
             tr lang
-                "Clean empty baseplates for full freedom"
-                "Puhtaat pohjalevyt vapaaseen rakentamiseen"
+                "Completely empty 8x8 building lots"
+                "Täysin tyhjät 8x8-rakennustontit"
 
 
 {-| Label for previewing the saved city on the 3D turntable.

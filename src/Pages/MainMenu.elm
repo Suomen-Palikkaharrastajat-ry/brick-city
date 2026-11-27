@@ -369,7 +369,8 @@ viewPreviewHero data actions heroWidth heroHeight =
                 ]
             ]
         , div [ Attr.class "absolute bottom-2.5 left-2.5 flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl bg-brand/80 border border-white/10 text-[11px] pointer-events-none backdrop-blur-sm" ]
-            [ previewStat FeatherIcons.users (T.statPopulation lang) (String.fromInt stats.population)
+            [ previewStat FeatherIcons.layers (T.statLots lang) (String.fromInt stats.builtLots ++ "/" ++ String.fromInt stats.totalLots)
+            , previewStat FeatherIcons.users (T.statPopulation lang) (String.fromInt stats.population)
             , previewStat FeatherIcons.home (T.statBuildings lang) (String.fromInt stats.buildings)
             , previewStat FeatherIcons.feather (T.statGreen lang) (String.fromInt stats.parks ++ "%")
             , previewStat FeatherIcons.barChart2 (T.statPeak lang) (String.fromInt stats.maxHeightPlates ++ "/32")
@@ -447,6 +448,18 @@ viewContinueCard lang zone saved onContinue =
                     , span [ Attr.class "font-mono font-bold text-white" ]
                         [ text (String.fromInt saved.city.cols ++ "×" ++ String.fromInt saved.city.rows) ]
                     ]
+                , span [ Attr.class "inline-flex items-center gap-1.5", Attr.attribute "data-testid" "continue-city-lots" ]
+                    [ FeatherIcons.layers |> FeatherIcons.withSize 13 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
+                    , span [] [ text (T.statLots lang ++ ": ") ]
+                    , span [ Attr.class "font-mono font-bold text-white" ]
+                        [ text (String.fromInt stats.builtLots ++ "/" ++ String.fromInt stats.totalLots) ]
+                    ]
+                , span [ Attr.class "inline-flex items-center gap-1.5", Attr.attribute "data-testid" "continue-city-pieces" ]
+                    [ FeatherIcons.box |> FeatherIcons.withSize 13 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
+                    , span [] [ text (T.statPieces lang ++ ": ") ]
+                    , span [ Attr.class "font-mono font-bold text-white" ]
+                        [ text (String.fromInt stats.totalParts) ]
+                    ]
                 , span [ Attr.class "inline-flex items-center gap-1.5", Attr.attribute "data-testid" "continue-city-population" ]
                     [ FeatherIcons.users |> FeatherIcons.withSize 13 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
                     , span [] [ text (T.statPopulation lang ++ ": ") ]
@@ -462,7 +475,7 @@ viewContinueCard lang zone saved onContinue =
             [ Attr.type_ "button"
             , onClick onContinue
             , Attr.attribute "data-testid" "continue-game-button"
-            , Attr.class "min-h-[52px] shrink-0 inline-flex items-center justify-center gap-2.5 px-7 py-3 rounded-xl bg-brand-yellow text-brand font-extrabold text-base uppercase tracking-wider cursor-pointer shadow-lg shadow-brand-yellow/25 hover:brightness-110 active:brightness-95 transition-all"
+            , Attr.class "min-h-[52px] shrink-0 inline-flex items-center justify-center gap-2.5 px-7 py-3 rounded-xl bg-brand-yellow text-brand font-extrabold text-base uppercase tracking-wider cursor-pointer shadow-lg shadow-brand-yellow/25 hover:brightness-110 active:brightness-95 focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d2235] focus-visible:outline-none transition-all"
             ]
             [ FeatherIcons.play |> FeatherIcons.withSize 20 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
             , span [] [ text (T.continueGameButton lang) ]
@@ -475,6 +488,17 @@ viewNewCityPanelParts lang newCityName gridSize preset actions =
     let
         nameInputId =
             "menu-new-city-name"
+
+        enterStartDecoder =
+            Decode.field "key" Decode.string
+                |> Decode.andThen
+                    (\k ->
+                        if k == "Enter" then
+                            Decode.succeed actions.onStartNewCity
+
+                        else
+                            Decode.fail "not Enter"
+                    )
     in
     section
         [ Attr.attribute "data-testid" "new-city-panel"
@@ -493,7 +517,7 @@ viewNewCityPanelParts lang newCityName gridSize preset actions =
                     [ Attr.type_ "button"
                     , onClick actions.onImportJson
                     , Attr.attribute "data-testid" "menu-import-json-button"
-                    , Attr.class "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/15 hover:border-brand-yellow/60 text-[11px] font-bold text-slate-300 hover:text-white cursor-pointer transition-colors"
+                    , Attr.class "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/15 hover:border-brand-yellow/60 text-[11px] font-bold text-slate-300 hover:text-white cursor-pointer focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none transition-colors"
                     ]
                     [ FeatherIcons.upload |> FeatherIcons.withSize 12 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
                     , span [] [ text (T.actionImportJson lang) ]
@@ -510,10 +534,11 @@ viewNewCityPanelParts lang newCityName gridSize preset actions =
                     , Attr.type_ "text"
                     , Attr.value newCityName
                     , onInput actions.onCityNameChanged
+                    , Html.Events.on "keydown" enterStartDecoder
                     , Attr.maxlength 32
                     , Attr.placeholder (T.defaultCityName lang)
                     , Attr.attribute "data-testid" "new-city-name-input"
-                    , Attr.class "w-full min-h-[44px] px-3.5 rounded-xl bg-slate-900/90 border border-white/20 focus:border-brand-yellow outline-none text-sm font-bold text-white placeholder:text-slate-500"
+                    , Attr.class "w-full min-h-[44px] px-3.5 rounded-xl bg-slate-900/90 border border-white/20 focus:border-brand-yellow focus:ring-1 focus:ring-brand-yellow outline-none text-sm font-bold text-white placeholder:text-slate-500"
                     ]
                     []
                 , div [ Attr.class "flex flex-wrap items-center gap-1.5 pt-0.5" ]
@@ -523,7 +548,7 @@ viewNewCityPanelParts lang newCityName gridSize preset actions =
                                 [ Attr.type_ "button"
                                 , onClick (actions.onCityNameChanged suggestion)
                                 , Attr.class
-                                    ("px-2.5 py-0.5 rounded-full text-[11px] font-semibold border cursor-pointer transition-colors "
+                                    ("px-2.5 py-0.5 rounded-full text-[11px] font-semibold border cursor-pointer focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none transition-colors "
                                         ++ (if String.trim newCityName == suggestion then
                                                 "bg-brand-yellow/20 border-brand-yellow/60 text-brand-yellow"
 
@@ -558,7 +583,7 @@ viewNewCityPanelParts lang newCityName gridSize preset actions =
             [ Attr.type_ "button"
             , onClick actions.onStartNewCity
             , Attr.attribute "data-testid" "start-building-button"
-            , Attr.class "w-full min-h-[52px] flex items-center justify-center gap-2.5 py-3.5 px-6 rounded-xl bg-brand-yellow text-brand font-extrabold text-base uppercase tracking-wider cursor-pointer shadow-lg shadow-brand-yellow/25 hover:brightness-110 active:brightness-95 transition-all"
+            , Attr.class "w-full min-h-[52px] flex items-center justify-center gap-2.5 py-3.5 px-6 rounded-xl bg-brand-yellow text-brand font-extrabold text-base uppercase tracking-wider cursor-pointer shadow-lg shadow-brand-yellow/25 hover:brightness-110 active:brightness-95 focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d2235] focus-visible:outline-none transition-all"
             ]
             [ FeatherIcons.tool |> FeatherIcons.withSize 20 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
             , span [] [ text (T.startBuildingButton lang) ]
@@ -578,7 +603,7 @@ viewGridSizeButton selectedSize onSelect size =
         , Attr.attribute "aria-pressed" (boolStr active)
         , Attr.attribute "data-testid" ("menu-grid-size-" ++ String.fromInt size)
         , Attr.class
-            ("min-h-[42px] rounded-xl font-mono text-sm font-extrabold border cursor-pointer transition-all "
+            ("min-h-[42px] rounded-xl font-mono text-sm font-extrabold border cursor-pointer focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none transition-all "
                 ++ (if active then
                         "bg-brand-yellow border-brand-yellow text-brand shadow-md"
 
@@ -616,7 +641,7 @@ viewPresetCard lang selectedPreset onSelect preset =
         , Attr.attribute "aria-pressed" (boolStr active)
         , Attr.attribute "data-testid" ("preset-" ++ Templates.presetId preset)
         , Attr.class
-            ("p-3 rounded-xl border text-left flex flex-col gap-1 cursor-pointer transition-all "
+            ("p-3 rounded-xl border text-left flex flex-col gap-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none transition-all "
                 ++ (if active then
                         "bg-brand-yellow/15 border-brand-yellow text-white shadow-md"
 
@@ -729,6 +754,17 @@ viewCollabJoinOrHost data actions =
                         else
                             Decode.fail "not Enter"
                     )
+
+        enterHostDecoder =
+            Decode.field "key" Decode.string
+                |> Decode.andThen
+                    (\k ->
+                        if k == "Enter" then
+                            Decode.succeed actions.onHostRoom
+
+                        else
+                            Decode.fail "not Enter"
+                    )
     in
     div [ Attr.class "flex-1 flex flex-col justify-between gap-4" ]
         [ div [ Attr.class "flex flex-col gap-4" ]
@@ -745,9 +781,10 @@ viewCollabJoinOrHost data actions =
                     , Attr.type_ "text"
                     , Attr.value data.builderName
                     , onInput actions.onBuilderNameChanged
+                    , Html.Events.on "keydown" enterHostDecoder
                     , Attr.maxlength 24
                     , Attr.attribute "data-testid" "menu-builder-name-input"
-                    , Attr.class "w-full min-h-[42px] px-3.5 rounded-xl bg-slate-900/90 border border-white/20 focus:border-brand-yellow outline-none text-sm font-semibold text-white"
+                    , Attr.class "w-full min-h-[42px] px-3.5 rounded-xl bg-slate-900/90 border border-white/20 focus:border-brand-yellow focus:ring-1 focus:ring-brand-yellow outline-none text-sm font-semibold text-white"
                     ]
                     []
                 ]
@@ -755,7 +792,7 @@ viewCollabJoinOrHost data actions =
                 [ Attr.type_ "button"
                 , onClick actions.onHostRoom
                 , Attr.attribute "data-testid" "menu-host-room-button"
-                , Attr.class "w-full min-h-[48px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-extrabold cursor-pointer shadow-md transition-colors"
+                , Attr.class "w-full min-h-[48px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-extrabold cursor-pointer shadow-md focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none transition-colors"
                 ]
                 [ FeatherIcons.share2 |> FeatherIcons.withSize 18 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
                 , span [] [ text (T.hostCollabRoomButton lang) ]
@@ -777,14 +814,14 @@ viewCollabJoinOrHost data actions =
                     , Attr.placeholder (T.joinRoomInputPlaceholder lang)
                     , Attr.attribute "autocomplete" "off"
                     , Attr.attribute "data-testid" "menu-room-code-input"
-                    , Attr.class "flex-1 min-w-0 min-h-[44px] px-3.5 rounded-xl bg-slate-900/90 border border-white/20 focus:border-brand-yellow outline-none text-xs sm:text-sm font-mono text-white placeholder:text-slate-500"
+                    , Attr.class "flex-1 min-w-0 min-h-[44px] px-3.5 rounded-xl bg-slate-900/90 border border-white/20 focus:border-brand-yellow focus:ring-1 focus:ring-brand-yellow outline-none text-xs sm:text-sm font-mono text-white placeholder:text-slate-500"
                     ]
                     []
                 , button
                     [ Attr.type_ "button"
                     , onClick actions.onJoinRoom
                     , Attr.attribute "data-testid" "menu-join-room-button"
-                    , Attr.class "min-h-[44px] px-5 rounded-xl bg-white/15 hover:bg-brand-yellow hover:text-brand border border-white/20 text-white text-xs sm:text-sm font-extrabold cursor-pointer transition-colors"
+                    , Attr.class "min-h-[44px] px-5 rounded-xl bg-white/15 hover:bg-brand-yellow hover:text-brand border border-white/20 text-white text-xs sm:text-sm font-extrabold cursor-pointer focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none transition-colors"
                     ]
                     [ text (T.joinRoomButton lang) ]
                 ]
@@ -824,7 +861,7 @@ viewCollabLobby data actions =
                     [ Attr.type_ "button"
                     , onClick actions.onCopyRoomLink
                     , Attr.attribute "data-testid" "menu-copy-room-link"
-                    , Attr.class "inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl bg-brand-yellow text-brand text-xs font-extrabold cursor-pointer hover:brightness-110"
+                    , Attr.class "inline-flex items-center gap-1.5 h-10 px-3.5 rounded-xl bg-brand-yellow text-brand text-xs font-extrabold cursor-pointer hover:brightness-110 focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none"
                     ]
                     [ (if data.shareCopiedNotice then
                         FeatherIcons.check
@@ -870,7 +907,7 @@ viewCollabLobby data actions =
                 [ Attr.type_ "button"
                 , onClick actions.onEnterRoomCity
                 , Attr.attribute "data-testid" "menu-enter-room-city-button"
-                , Attr.class "flex-1 min-h-[48px] inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-brand-yellow text-brand text-sm font-extrabold cursor-pointer hover:brightness-110"
+                , Attr.class "flex-1 min-h-[48px] inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-brand-yellow text-brand text-sm font-extrabold cursor-pointer hover:brightness-110 focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none"
                 ]
                 [ FeatherIcons.play |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
                 , span [] [ text (T.enterRoomCityButton lang) ]
@@ -879,7 +916,7 @@ viewCollabLobby data actions =
                 [ Attr.type_ "button"
                 , onClick actions.onLeaveRoom
                 , Attr.attribute "data-testid" "menu-leave-room-button"
-                , Attr.class "min-h-[48px] px-4 rounded-xl bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-extrabold cursor-pointer"
+                , Attr.class "min-h-[48px] px-4 rounded-xl bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-extrabold cursor-pointer focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none"
                 ]
                 [ text (T.leaveRoomButton lang) ]
             ]
