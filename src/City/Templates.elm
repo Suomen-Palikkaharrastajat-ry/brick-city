@@ -789,8 +789,8 @@ modernSkyscraper =
             , line colWhite 0 -104 0 straightM "3022.dat"
             , line colTransLightBlue 0 -112 0 straightM "3022.dat"
             , line colDarkBluishGray 0 -120 0 straightM "3022.dat"
-            , -- Crown and spire
-              line colTransLightBlue 0 -128 0 straightM "3022.dat"
+            , -- Crown and spire (2x2 jumper plate provides center stud for 2x2 dish)
+              line colTransLightBlue 0 -128 0 straightM "87580.dat"
             , line colWhite 0 -136 0 straightM "4740.dat"
             , line colLightBluishGray 0 -144 0 straightM "3957a.dat"
             ]
@@ -815,13 +815,11 @@ centralPark =
             , line colTan 0 -8 60 straightM "3068b.dat"
             , line colTan -60 -8 0 straightM "3068b.dat"
             , line colTan 60 -8 0 straightM "3068b.dat"
-            , -- Central tiered fountain on 2x2 plate
+            , -- Central tiered fountain on 2x2 plate with jumper and dish basin
               line colLightBluishGray 0 -8 0 straightM "3022.dat"
-            , line colTransLightBlue -10 -16 -10 straightM "6141.dat"
-            , line colTransLightBlue 10 -16 -10 straightM "6141.dat"
-            , line colTransLightBlue -10 -16 10 straightM "6141.dat"
-            , line colTransLightBlue 10 -16 10 straightM "6141.dat"
+            , line colTransLightBlue 0 -16 0 straightM "87580.dat"
             , line colWhite 0 -24 0 straightM "4740.dat"
+            , line colTransLightBlue 0 -32 0 straightM "6141.dat"
             , -- Corner pine trees
               line colReddishBrown -50 -24 -50 straightM "3062b.dat"
             , line colDarkGreen -50 -48 -50 straightM "4589.dat"
@@ -859,10 +857,11 @@ industrialPlant =
             , line colDarkTan -40 -48 20 straightM "3001.dat"
             , line colDarkTan -40 -48 60 straightM "3001.dat"
             , line colLightBluishGray -40 -56 40 straightM "3031.dat"
-            , -- Storage silo (2x2 round brick + dome)
+            , -- Storage silo (2x2 round brick + jumper + dish dome)
               line colLightBluishGray 40 -24 40 straightM "3941.dat"
             , line colLightBluishGray 40 -48 40 straightM "3941.dat"
-            , line colDarkBluishGray 40 -56 40 straightM "4740.dat"
+            , line colLightBluishGray 40 -56 40 straightM "87580.dat"
+            , line colDarkBluishGray 40 -64 40 straightM "4740.dat"
             , -- Twin smokestacks with steam plumes
               line colDarkRed -50 -24 -50 straightM "3062b.dat"
             , line colDarkRed -50 -48 -50 straightM "3062b.dat"

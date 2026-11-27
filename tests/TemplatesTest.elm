@@ -64,8 +64,8 @@ suite =
                     , ( "micro-house", 15, 9 )
                     , ( "high-rise", 14, 19 )
                     , ( "skyscraper", 17, 29 )
-                    , ( "central-park", 23, 9 )
-                    , ( "industrial-plant", 17, 10 )
+                    , ( "central-park", 21, 9 )
+                    , ( "industrial-plant", 18, 10 )
                     , ( "waterfront-canal", 20, 9 )
                     ]
                     metrics
