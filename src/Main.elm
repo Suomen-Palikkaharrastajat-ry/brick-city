@@ -810,12 +810,19 @@ update msg model =
 
                 ( refreshed, fetchCmd ) =
                     refreshCityMeshes updated
+
+                targetRoomId =
+                    if model.room.role /= LocalSolo && not (String.isEmpty (String.trim model.room.roomId)) then
+                        model.room.roomId
+
+                    else
+                        ""
             in
             ( refreshed
             , Cmd.batch
                 [ fetchCmd
                 , Ports.createCityRoom
-                    { roomId = ""
+                    { roomId = targetRoomId
                     , name = cleanName
                     , city = Persistence.encodeCityValue hostCity
                     }
@@ -1172,9 +1179,17 @@ update msg model =
             ( { model | openModal = toggled }, Cmd.none )
 
         HostRoom ->
+            let
+                targetRoomId =
+                    if model.room.role /= LocalSolo && not (String.isEmpty (String.trim model.room.roomId)) then
+                        model.room.roomId
+
+                    else
+                        ""
+            in
             ( { model | openModal = NoModal }
             , Ports.createCityRoom
-                { roomId = ""
+                { roomId = targetRoomId
                 , name = cleanBuilderName model.room.myName
                 , city = Persistence.encodeCityValue model.city
                 }

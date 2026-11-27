@@ -126,6 +126,47 @@ export function writeCachedRoomCity(
   }
 }
 
+export const CITY_HOSTED_ROOMS_KEY = 'palikkakehys.city.hostedRooms'
+
+export function getHostedRoomIds(storage = typeof window !== 'undefined' ? window.localStorage : null) {
+  try {
+    if (!storage) return new Set()
+    const raw = storage.getItem(CITY_HOSTED_ROOMS_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw)
+    return new Set(Array.isArray(parsed) ? parsed.map((x) => String(x).toUpperCase()) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+export function isRoomHostedLocally(roomId, storage = typeof window !== 'undefined' ? window.localStorage : null) {
+  if (!roomId) return false
+  const ids = getHostedRoomIds(storage)
+  return ids.has(String(roomId).trim().toUpperCase())
+}
+
+export function setRoomHostedLocally(
+  roomId,
+  isHosted,
+  storage = typeof window !== 'undefined' ? window.localStorage : null,
+) {
+  try {
+    if (!storage || !roomId) return false
+    const ids = getHostedRoomIds(storage)
+    const clean = String(roomId).trim().toUpperCase()
+    if (isHosted) {
+      ids.add(clean)
+    } else {
+      ids.delete(clean)
+    }
+    storage.setItem(CITY_HOSTED_ROOMS_KEY, JSON.stringify(Array.from(ids)))
+    return true
+  } catch {
+    return false
+  }
+}
+
 function lotKey(row, col) {
   return `${row},${col}`
 }
@@ -179,6 +220,14 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
   let myFocusedLot = null
   let session = 0
   let snapshot = normalizeSnapshot(null)
+  let connectTimeoutTimer = null
+
+  function clearConnectTimer() {
+    if (connectTimeoutTimer) {
+      clearTimeout(connectTimeoutTimer)
+      connectTimeoutTimer = null
+    }
+  }
 
   const peers = new Map() // slot -> { slot, id, name, color, focusedLot }
   const viewerSlotMap = new Map() // viewerId -> slot
@@ -380,6 +429,7 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
     }
 
     if (msg.type === 'welcome') {
+      clearConnectTimer()
       if (Number.isInteger(msg.assignedSlot)) {
         mySlot = msg.assignedSlot
       }
@@ -400,6 +450,7 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
     }
 
     if (msg.type === 'city_snapshot') {
+      clearConnectTimer()
       status = 'connected'
       if (Array.isArray(msg.peers)) {
         peers.clear()
@@ -439,6 +490,7 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
 
   function cleanup() {
     session++
+    clearConnectTimer()
     if (broadcaster) {
       try {
         broadcaster.stop()
@@ -471,6 +523,7 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
     const cached = !city ? readCachedRoomCity(roomId, storage) : null
     snapshot = normalizeSnapshot(city || cached)
     persistRoomSnapshot()
+    setRoomHostedLocally(roomId, true, storage)
 
     peers.set(1, {
       slot: 1,
@@ -510,7 +563,7 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
     return roomId
   }
 
-  function joinRoom({ roomId: targetId, name } = {}) {
+  function joinRoom({ roomId: targetId, name, timeoutMs = 7500 } = {}) {
     const cleanId =
       parseCityRoomFromHash(targetId) ||
       String(targetId ?? '')
@@ -531,6 +584,21 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
     status = 'connecting'
     emitRoomState()
 
+    clearConnectTimer()
+    const connectLimit = Number(options?.connectTimeoutMs ?? timeoutMs) || 7500
+    connectTimeoutTimer = setTimeout(() => {
+      if (session !== mySession || status === 'connected') return
+      status = 'disconnected'
+      if (viewer) {
+        try {
+          viewer.stop()
+        } catch {}
+        viewer = null
+      }
+      emitRoomState()
+      reportError('Huoneen isäntä ei ole paikalla tai yhteys aikakatkaistiin.')
+    }, connectLimit)
+
     viewer = new ViewerClass(signalingUrl, roomId, {
       onSnapshot: (msg) => {
         if (session !== mySession) return
@@ -547,18 +615,29 @@ export function createCitySyncManager(ports, signalingUrl = DEFAULT_SIGNALING_UR
       onStatus: (s) => {
         if (session !== mySession) return
         if (s === 'ended') {
+          clearConnectTimer()
           status = 'disconnected'
           emitRoomState()
+          reportError('Huoneen isäntä poistui linjoilta.')
+        } else if (s === 'reconnecting') {
+          if (status === 'connected') {
+            status = 'connecting'
+            emitRoomState()
+          }
         }
       },
       onError: (err) => {
         if (session !== mySession) return
+        clearConnectTimer()
+        status = 'disconnected'
+        emitRoomState()
         reportError(err?.message || err)
       },
     })
 
     viewer.start().catch((err) => {
       if (session !== mySession) return
+      clearConnectTimer()
       status = 'disconnected'
       emitRoomState()
       reportError(err?.message || 'Could not join city room')

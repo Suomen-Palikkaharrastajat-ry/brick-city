@@ -903,15 +903,27 @@ viewCollabLobby data actions =
                 ]
             ]
         , div [ Attr.class "flex items-center gap-2 pt-2 border-t border-white/10" ]
-            [ button
-                [ Attr.type_ "button"
-                , onClick actions.onEnterRoomCity
-                , Attr.attribute "data-testid" "menu-enter-room-city-button"
-                , Attr.class "flex-1 min-h-[48px] inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-brand-yellow text-brand text-sm font-extrabold cursor-pointer hover:brightness-110 focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none"
-                ]
-                [ FeatherIcons.play |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
-                , span [] [ text (T.enterRoomCityButton lang) ]
-                ]
+            [ if data.room.status == Disconnected then
+                button
+                    [ Attr.type_ "button"
+                    , onClick actions.onHostRoom
+                    , Attr.attribute "data-testid" "menu-claim-host-button"
+                    , Attr.class "flex-1 min-h-[48px] inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-brand-yellow text-brand text-sm font-extrabold cursor-pointer hover:brightness-110 focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none"
+                    ]
+                    [ FeatherIcons.share2 |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
+                    , span [] [ text (T.claimHostButton lang) ]
+                    ]
+
+              else
+                button
+                    [ Attr.type_ "button"
+                    , onClick actions.onEnterRoomCity
+                    , Attr.attribute "data-testid" "menu-enter-room-city-button"
+                    , Attr.class "flex-1 min-h-[48px] inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-brand-yellow text-brand text-sm font-extrabold cursor-pointer hover:brightness-110 focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:outline-none"
+                    ]
+                    [ FeatherIcons.play |> FeatherIcons.withSize 16 |> FeatherIcons.toHtml [ Attr.attribute "aria-hidden" "true" ]
+                    , span [] [ text (T.enterRoomCityButton lang) ]
+                    ]
             , button
                 [ Attr.type_ "button"
                 , onClick actions.onLeaveRoom

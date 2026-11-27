@@ -22,6 +22,7 @@ module City.I18n exposing
     , cityFilesTab
     , cityNameLabel
     , cityNameSuggestions
+    , claimHostButton
     , clearConfirmHint
     , collabMenuSubtitle
     , connectedLabel
@@ -50,6 +51,9 @@ module City.I18n exposing
     , heightMeterLabel
     , heightUnit
     , hostCollabRoomButton
+    , hostOfflineBadge
+    , hostOfflineDescription
+    , hostOfflineHeading
     , hostRoomButton
     , joinRoomButton
     , joinRoomInputPlaceholder
@@ -443,6 +447,36 @@ connectingLabel lang =
 disconnectedLabel : Language -> String
 disconnectedLabel lang =
     tr lang "Solo" "Paikallinen"
+
+
+{-| Room status: Host offline / connection lost badge.
+-}
+hostOfflineBadge : Language -> String
+hostOfflineBadge lang =
+    tr lang "Host Offline" "Ei yhteyttä"
+
+
+{-| Heading when collaborative room host is offline.
+-}
+hostOfflineHeading : Language -> String
+hostOfflineHeading lang =
+    tr lang "Room Host is Offline" "Huoneen isäntä ei ole linjoilla"
+
+
+{-| Detailed explanation when room host is offline.
+-}
+hostOfflineDescription : Language -> String
+hostOfflineDescription lang =
+    tr lang
+        "Connection to the host timed out or the creator left. You can become the new host to keep building, or return to your solo city."
+        "Yhteys huoneen isäntään katkesi tai huoneen luoja poistui. Voit ryhtyä huoneen uudeksi isännäksi ja jatkaa rakentamista, tai poistua omaan kaupunkiisi."
+
+
+{-| CTA button to claim host role for the room.
+-}
+claimHostButton : Language -> String
+claimHostButton lang =
+    tr lang "Become Room Host" "Ryhdy huoneen isännäksi"
 
 
 {-| Self suffix on peer list.

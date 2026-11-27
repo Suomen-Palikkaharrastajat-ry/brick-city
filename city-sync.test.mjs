@@ -5,10 +5,12 @@ import {
   CITY_SAVED_AT_KEY,
   CITY_STORAGE_KEY,
   createCitySyncManager,
+  isRoomHostedLocally,
   parseCityRoomFromHash,
   readStoredCityJson,
   readStoredCitySavedAt,
   roomShareHash,
+  setRoomHostedLocally,
   writeStoredCityJson,
 } from './city-sync.js'
 
@@ -239,5 +241,59 @@ test('host creates room, guest receives city snapshot, and lot edits synchronize
   assert.deepEqual(hostPorts.events.roomStates.at(-1).peers[1].focusedLot, { row: 1, col: 2 })
 
   host.leaveRoom()
+  guest.leaveRoom()
+})
+
+test('hosted room tracking persists created rooms in storage', () => {
+  const storage = createMemoryStorage()
+  assert.equal(isRoomHostedLocally('CITY99', storage), false)
+  assert.equal(setRoomHostedLocally('CITY99', true, storage), true)
+  assert.equal(isRoomHostedLocally('CITY99', storage), true)
+  assert.equal(isRoomHostedLocally('city99', storage), true)
+  assert.equal(setRoomHostedLocally('CITY99', false, storage), true)
+  assert.equal(isRoomHostedLocally('CITY99', storage), false)
+})
+
+test('joinRoom times out cleanly when room host is offline instead of hanging indefinitely', async () => {
+  class SilentViewer {
+    constructor(_url, _room, opts) {
+      this.opts = opts
+      this.stopped = false
+    }
+    async start() {
+      // Connects WebSocket but broadcaster is offline, so no offer/welcome ever arrives
+    }
+    stop() {
+      this.stopped = true
+    }
+  }
+
+  const { ports, events } = makeFakePorts()
+  const storage = createMemoryStorage()
+  const guest = createCitySyncManager(ports, 'http://signaling.invalid', {
+    Viewer: SilentViewer,
+    storage,
+    connectTimeoutMs: 50,
+  })
+
+  guest.joinRoom({ roomId: 'VACANT1', name: 'Explorer', timeoutMs: 50 })
+  assert.equal(events.roomStates.at(-1).status, 'connecting')
+
+  // Wait for connectTimeoutMs
+  await new Promise((r) => setTimeout(r, 80))
+  await settle()
+
+  assert.equal(events.roomStates.at(-1).status, 'disconnected')
+  assert.equal(events.errors.length >= 1, true)
+  assert.match(events.errors.at(-1), /isäntä/i)
+
+  // Guest can now claim the vacant room as host
+  const claimedId = guest.createRoom({
+    roomId: 'VACANT1',
+    name: 'NewMayor',
+    city: { cityName: 'Claimed City', cols: 4, rows: 4, lots: {}, version: 1 },
+  })
+  assert.equal(claimedId, 'VACANT1')
+  assert.equal(isRoomHostedLocally('VACANT1', storage), true)
   guest.leaveRoom()
 })

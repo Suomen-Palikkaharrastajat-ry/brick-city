@@ -210,7 +210,37 @@ topHud cityName room stats audioMuted lang actions =
                     T.connectingLabel lang
 
                 _ ->
-                    T.roomHeading lang
+                    if isCollab then
+                        T.hostOfflineBadge lang
+
+                    else
+                        T.roomHeading lang
+
+        collabButtonClass =
+            if not isCollab then
+                "bg-slate-900/80 border-white/15 text-brand-yellow hover:border-brand-yellow/60"
+
+            else
+                case room.status of
+                    Connected ->
+                        "bg-emerald-600/85 border-emerald-300/60 text-white"
+
+                    Connecting ->
+                        "bg-amber-600/85 border-amber-300/60 text-white"
+
+                    _ ->
+                        "bg-rose-900/80 border-rose-400/60 text-rose-200"
+
+        collabDotClass =
+            case room.status of
+                Connected ->
+                    "w-2 h-2 rounded-full bg-emerald-200 animate-pulse shrink-0"
+
+                Connecting ->
+                    "w-2 h-2 rounded-full bg-amber-200 animate-pulse shrink-0"
+
+                _ ->
+                    "w-2 h-2 rounded-full bg-rose-400 shrink-0"
     in
     div
         [ Attr.class "absolute top-0 left-0 right-0 z-20 flex flex-wrap items-center justify-between gap-2 p-2.5 sm:p-3 pointer-events-none"
@@ -250,16 +280,11 @@ topHud cityName room stats audioMuted lang actions =
                 , Attr.attribute "aria-label" (T.roomSharingTab lang)
                 , Attr.class
                     ("touch-target inline-flex items-center gap-1.5 h-10 px-3 rounded-full border backdrop-blur-md text-xs font-extrabold cursor-pointer shadow-lg transition-all "
-                        ++ (if isCollab then
-                                "bg-emerald-600/85 border-emerald-300/60 text-white"
-
-                            else
-                                "bg-slate-900/80 border-white/15 text-brand-yellow hover:border-brand-yellow/60"
-                           )
+                        ++ collabButtonClass
                     )
                 ]
                 [ if isCollab then
-                    span [ Attr.class "w-2 h-2 rounded-full bg-emerald-200 animate-pulse shrink-0" ] []
+                    span [ Attr.class collabDotClass ] []
 
                   else
                     FeatherIcons.users |> FeatherIcons.withSize 15 |> FeatherIcons.toHtml []
@@ -881,53 +906,93 @@ collabPanel room roomCodeInput lang baseUrl actions =
             MainMenu.makeCityRoomUrl baseUrl room.roomId
     in
     if inRoom then
-        div [ Attr.class "flex flex-col gap-3" ]
-            [ div [ Attr.class "flex items-center justify-between gap-2 p-3 rounded-2xl bg-slate-950/75 border border-white/10" ]
-                [ div []
-                    [ span [ Attr.class "text-[11px] text-slate-400" ] [ text (T.tr lang "Room Code" "Huonekoodi") ]
-                    , p [ Attr.class "text-lg font-mono font-black text-brand-yellow" ] [ text room.roomId ]
+        if room.status == Disconnected then
+            div [ Attr.class "flex flex-col gap-3.5" ]
+                [ div [ Attr.class "flex items-start gap-3 p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/30" ]
+                    [ span [ Attr.class "w-2.5 h-2.5 rounded-full bg-rose-400 mt-1 shrink-0" ] []
+                    , div [ Attr.class "flex-1 min-w-0" ]
+                        [ p [ Attr.class "text-xs font-black text-rose-200" ] [ text (T.hostOfflineHeading lang) ]
+                        , p [ Attr.class "text-[11px] text-rose-300/80 leading-snug mt-1" ] [ text (T.hostOfflineDescription lang) ]
+                        ]
+                    ]
+                , div [ Attr.class "flex items-center justify-between gap-2 p-3 rounded-2xl bg-slate-950/75 border border-white/10" ]
+                    [ div []
+                        [ span [ Attr.class "text-[11px] text-slate-400" ] [ text (T.tr lang "Room Code" "Huonekoodi") ]
+                        , p [ Attr.class "text-lg font-mono font-black text-brand-yellow" ] [ text room.roomId ]
+                        ]
+                    , button
+                        [ Attr.type_ "button"
+                        , onClick actions.onCopyRoomLink
+                        , Attr.class "touch-target inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-extrabold cursor-pointer transition-colors"
+                        ]
+                        [ FeatherIcons.copy |> FeatherIcons.withSize 14 |> FeatherIcons.toHtml []
+                        , span [] [ text (T.copyInviteLink lang) ]
+                        ]
                     ]
                 , button
                     [ Attr.type_ "button"
-                    , onClick actions.onCopyRoomLink
-                    , Attr.class "touch-target inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-brand-yellow text-brand text-xs font-extrabold cursor-pointer shadow-md"
+                    , onClick actions.onHostRoom
+                    , Attr.attribute "data-testid" "claim-host-button"
+                    , Attr.class "touch-target h-11 px-4 rounded-2xl bg-brand-yellow text-brand text-xs font-black cursor-pointer shadow-md hover:brightness-105 transition-all"
                     ]
-                    [ FeatherIcons.copy |> FeatherIcons.withSize 14 |> FeatherIcons.toHtml []
-                    , span [] [ text (T.copyInviteLink lang) ]
+                    [ text (T.claimHostButton lang) ]
+                , button
+                    [ Attr.type_ "button"
+                    , onClick actions.onLeaveRoom
+                    , Attr.attribute "data-testid" "leave-room-button"
+                    , Attr.class "touch-target h-10 px-4 rounded-2xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-extrabold cursor-pointer transition-colors"
                     ]
+                    [ text (T.leaveRoomButton lang) ]
                 ]
-            , Lazy.lazy viewQrBlock roomUrl
-            , div [ Attr.class "flex flex-col gap-1.5" ]
-                [ span [ Attr.class "text-[11px] font-bold uppercase tracking-wider text-slate-400" ]
-                    [ text (T.buildersHeading lang) ]
-                , div [ Attr.class "flex flex-wrap gap-1.5" ]
-                    (List.map
-                        (\peer ->
-                            div [ Attr.class "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/90 border border-white/15 text-xs" ]
-                                [ span [ Attr.class "w-2.5 h-2.5 rounded-full", Attr.style "background" peer.color ] []
-                                , span [ Attr.class "font-semibold" ]
-                                    [ text
-                                        (peer.name
-                                            ++ (if peer.slot == room.mySlot then
-                                                    " (" ++ T.youTag lang ++ ")"
 
-                                                else
-                                                    ""
-                                               )
-                                        )
+        else
+            div [ Attr.class "flex flex-col gap-3" ]
+                [ div [ Attr.class "flex items-center justify-between gap-2 p-3 rounded-2xl bg-slate-950/75 border border-white/10" ]
+                    [ div []
+                        [ span [ Attr.class "text-[11px] text-slate-400" ] [ text (T.tr lang "Room Code" "Huonekoodi") ]
+                        , p [ Attr.class "text-lg font-mono font-black text-brand-yellow" ] [ text room.roomId ]
+                        ]
+                    , button
+                        [ Attr.type_ "button"
+                        , onClick actions.onCopyRoomLink
+                        , Attr.class "touch-target inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-brand-yellow text-brand text-xs font-extrabold cursor-pointer shadow-md"
+                        ]
+                        [ FeatherIcons.copy |> FeatherIcons.withSize 14 |> FeatherIcons.toHtml []
+                        , span [] [ text (T.copyInviteLink lang) ]
+                        ]
+                    ]
+                , Lazy.lazy viewQrBlock roomUrl
+                , div [ Attr.class "flex flex-col gap-1.5" ]
+                    [ span [ Attr.class "text-[11px] font-bold uppercase tracking-wider text-slate-400" ]
+                        [ text (T.buildersHeading lang) ]
+                    , div [ Attr.class "flex flex-wrap gap-1.5" ]
+                        (List.map
+                            (\peer ->
+                                div [ Attr.class "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/90 border border-white/15 text-xs" ]
+                                    [ span [ Attr.class "w-2.5 h-2.5 rounded-full", Attr.style "background" peer.color ] []
+                                    , span [ Attr.class "font-semibold" ]
+                                        [ text
+                                            (peer.name
+                                                ++ (if peer.slot == room.mySlot then
+                                                        " (" ++ T.youTag lang ++ ")"
+
+                                                    else
+                                                        ""
+                                                   )
+                                            )
+                                        ]
                                     ]
-                                ]
+                            )
+                            room.peers
                         )
-                        room.peers
-                    )
+                    ]
+                , button
+                    [ Attr.type_ "button"
+                    , onClick actions.onLeaveRoom
+                    , Attr.class "touch-target h-10 px-4 rounded-2xl bg-rose-600/85 hover:bg-rose-600 text-white text-xs font-extrabold cursor-pointer"
+                    ]
+                    [ text (T.leaveRoomButton lang) ]
                 ]
-            , button
-                [ Attr.type_ "button"
-                , onClick actions.onLeaveRoom
-                , Attr.class "touch-target h-10 px-4 rounded-2xl bg-rose-600/85 hover:bg-rose-600 text-white text-xs font-extrabold cursor-pointer"
-                ]
-                [ text (T.leaveRoomButton lang) ]
-            ]
 
     else
         div [ Attr.class "flex flex-col gap-3" ]

@@ -11,7 +11,9 @@ import { DEFAULT_SIGNALING_URL } from './vendor/packages/brick-frame-game/runtim
 import { createAudioEngine } from './audio.js'
 import {
   createCitySyncManager,
+  isRoomHostedLocally,
   parseCityRoomFromHash,
+  readCachedRoomCity,
   readStoredCityJson,
   readStoredCitySavedAt,
   roomShareHash,
@@ -67,22 +69,33 @@ setupGameRuntime(ports, {
 
 const citySync = createCitySyncManager(ports, signalingUrl)
 
-if (initialRoomId) {
-  setTimeout(() => {
+function connectToRoom(roomId) {
+  if (!roomId) return
+  if (isRoomHostedLocally(roomId)) {
+    const cached = readCachedRoomCity(roomId) || readStoredCityJson()
+    citySync.createRoom({
+      roomId,
+      name: 'Isäntä',
+      city: cached,
+    })
+  } else {
     citySync.joinRoom({
-      roomId: initialRoomId,
+      roomId,
       name: `Rakentaja ${Math.floor(Math.random() * 900 + 100)}`,
     })
+  }
+}
+
+if (initialRoomId) {
+  setTimeout(() => {
+    connectToRoom(initialRoomId)
   }, 60)
 }
 
 window.addEventListener('hashchange', () => {
   const nextRoom = parseCityRoomFromHash(window.location.hash ?? '')
   if (nextRoom && nextRoom !== citySync.roomId) {
-    citySync.joinRoom({
-      roomId: nextRoom,
-      name: `Rakentaja ${Math.floor(Math.random() * 900 + 100)}`,
-    })
+    connectToRoom(nextRoom)
   }
 })
 
