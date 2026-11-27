@@ -13,6 +13,7 @@ import {
   createCitySyncManager,
   parseCityRoomFromHash,
   readStoredCityJson,
+  readStoredCitySavedAt,
   roomShareHash,
 } from './city-sync.js'
 import { Elm } from './src/Main.elm'
@@ -45,6 +46,7 @@ const runtime = initBricksRuntime({
     language: readLanguage(),
     savedAudioMuted,
     savedCityJson: readStoredCityJson(),
+    savedCitySavedAt: readStoredCitySavedAt(),
     initialRoomId,
     baseUrl: window.location.origin + window.location.pathname,
     predecodedInitialBytes: decodeHashToByteArray(initialHash),

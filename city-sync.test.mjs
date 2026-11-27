@@ -2,10 +2,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  CITY_SAVED_AT_KEY,
   CITY_STORAGE_KEY,
   createCitySyncManager,
   parseCityRoomFromHash,
   readStoredCityJson,
+  readStoredCitySavedAt,
   roomShareHash,
   writeStoredCityJson,
 } from './city-sync.js'
@@ -114,18 +116,22 @@ function makeFakePorts() {
 test('parseCityRoomFromHash parses #/city/:roomId and legacy room query hashes', () => {
   assert.equal(parseCityRoomFromHash('#/city/ab12cd'), 'AB12CD')
   assert.equal(parseCityRoomFromHash('https://kaupunki.palikkaharrastajat.fi/#/city/k7m9p2'), 'K7M9P2')
+  assert.equal(parseCityRoomFromHash('https://kaupunki.palikkaharrastajat.fi/?room=abcd'), 'ABCD')
   assert.equal(parseCityRoomFromHash('#room=city42'), 'CITY42')
   assert.equal(parseCityRoomFromHash('#join=xy99'), 'XY99')
   assert.equal(parseCityRoomFromHash('#b/abc'), '')
   assert.equal(roomShareHash('ab12cd'), '#/city/AB12CD')
 })
 
-test('localStorage helpers read and write city JSON safely', () => {
+test('localStorage helpers read and write city JSON and savedAt timestamp safely', () => {
   const storage = createMemoryStorage()
   assert.equal(readStoredCityJson(storage), '')
+  assert.equal(readStoredCitySavedAt(storage), 0)
   assert.equal(writeStoredCityJson('{"cityName":"Test"}', storage), true)
   assert.equal(storage.getItem(CITY_STORAGE_KEY), '{"cityName":"Test"}')
   assert.equal(readStoredCityJson(storage), '{"cityName":"Test"}')
+  assert.equal(Number(storage.getItem(CITY_SAVED_AT_KEY)) > 0, true)
+  assert.equal(readStoredCitySavedAt(storage) > 0, true)
 })
 
 test('host creates room, guest receives city snapshot, and lot edits synchronize both ways', async () => {

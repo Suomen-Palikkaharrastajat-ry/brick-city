@@ -1,14 +1,16 @@
-module Main exposing (Flags, Model, Msg, main)
+module Main exposing (Flags, Model, Msg, isCityRouteHash, isMenuHash, main)
 
 {-| Top-level Elm Architecture entry point for Brick City (`brick-city`).
 Deployed to <https://kaupunki.palikkaharrastajat.fi/>.
 
 Orchestrates:
 
-  - Two workspaces: the interactive 3D City View (`Pages.CityView`) and the
-    3D 8x8 Element Editor (`Pages.Build` built on `Studio.Core`).
-  - Automatic `localStorage` persistence of the player's city, JSON
-    export/import, and full multi-submodel `.mpd` export of the combined city.
+  - Three top-level pages: Main Menu / New Game (`Pages.MainMenu`), the
+    interactive 3D City View (`Pages.CityView`), and the 3D 8x8 Element Editor
+    (`Pages.Build` built on `Studio.Core`).
+  - Automatic `localStorage` persistence of the player's city (with saved
+    timestamp), JSON export/import, and full multi-submodel `.mpd` export of the
+    combined city.
   - Real-time collaborative city building over Cloudflare signaling rooms
     (`#/city/:roomId`) via `city-sync.js`.
   - LDraw part fetching & caching (`Game.PartLoading`) plus GPU mesh compilation
@@ -25,8 +27,8 @@ import City.Mesh as Mesh exposing (MeshCache)
 import City.Persistence as Persistence exposing (RoomUpdate(..))
 import City.Render as Render
 import City.Stats as Stats
-import City.Templates as Templates exposing (Template)
-import City.Types exposing (CityGrid, CityRoom, LotCoord, LotElement, RoomConnection(..), RoomRole(..), ViewMode(..))
+import City.Templates as Templates exposing (CityPreset(..), Template)
+import City.Types exposing (CityGrid, CityRoom, LotCoord, LotElement, RoomConnection(..), RoomRole(..), ViewMode(..), hashLdrawText)
 import Dict
 import EmbeddedParts
 import Game.PartLoading as PartLoading
@@ -42,8 +44,11 @@ import LDraw.Resolve as Resolve exposing (PartCache, ResolverConfig)
 import LDraw.Writer as Writer
 import Pages.Build as Build
 import Pages.CityView as CityView exposing (CityMenuModal(..))
+import Pages.MainMenu as MainMenu exposing (PreviewSource(..), SavedCitySummary)
 import Ports
 import Render.Camera as Camera exposing (Camera, Navigation(..))
+import Task
+import Time
 import UI.CameraGlobe as CameraGlobe
 
 
@@ -52,6 +57,7 @@ import UI.CameraGlobe as CameraGlobe
 type alias Flags =
     { savedAudioMuted : Bool
     , savedCityJson : String
+    , savedCitySavedAt : Float
     , initialRoomId : String
     , ldrawBase : String
     , ldrawFallbackBase : String
@@ -75,15 +81,27 @@ type alias Model =
     , partCache : PartCache
     , meshes : MeshCache
     , city : CityGrid
+    , savedCity : Maybe SavedCitySummary
     , camera : Camera
     , selectedLot : Maybe LotCoord
     , hoveredLot : Maybe LotCoord
     , clipboard : Maybe LotElement
+    , showLotTemplates : Bool
     , canvasDrag : CanvasDrag
     , globeDrag : Maybe CameraGlobe.Drag
     , heldKeys : { w : Bool, a : Bool, s : Bool, d : Bool }
     , viewMode : ViewMode
     , builder : Maybe Build.Model
+    , menuCityName : String
+    , menuCityNameEdited : Bool
+    , menuGridSize : Int
+    , menuPreset : CityPreset
+    , menuPreviewSource : PreviewSource
+    , menuPreviewCity : CityGrid
+    , menuCamera : Camera
+    , menuDragging : Bool
+    , timeZone : Time.Zone
+    , shareCopiedTimer : Float
     , room : CityRoom
     , roomCodeInput : String
     , openModal : CityMenuModal
@@ -107,8 +125,26 @@ type Msg
     = PartFetched String (Result Http.Error String)
     | ViewportResized { width : Int, height : Int }
     | AnimationTick Float
+    | GotTimeZone Time.Zone
+    | GotSavedTimestamp Time.Posix
+    | HashChanged String
     | KeyDown String
     | KeyUp String
+    | MenuCityNameChanged String
+    | MenuPickGridSize Int
+    | MenuPickPreset CityPreset
+    | MenuSetPreviewSource PreviewSource
+    | MenuCanvasMouseDown Float Float
+    | MenuCanvasMouseMove Float Float
+    | MenuCanvasMouseUp
+    | MenuCanvasWheel Float
+    | ContinueSavedCity
+    | StartNewCity
+    | ReturnToMainMenu
+    | MenuHostRoom
+    | EnterRoomCity
+    | BuilderNameChanged String
+    | SetLanguage Language
     | CityNameChanged String
     | ResizeGrid Int
     | CanvasPointerDown Float Float Int Bool
@@ -122,14 +158,16 @@ type Msg
     | GlobeZoom Float
     | GlobeZoomDone
     | GlobeReset
-    | ToggleWalkMode
+    | SetCameraMode CityView.CameraMode
     | EditSelectedLot
     | RotateSelectedLot
     | CopySelectedLot
     | PasteSelectedLot
     | ClearSelectedLot
     | StampTemplate Template
+    | ToggleLotTemplates
     | DeselectLot
+    | CityViewNoOp
     | ToggleModal CityMenuModal
     | HostRoom
     | JoinRoom
@@ -163,23 +201,100 @@ main =
         }
 
 
+{-| Return `True` when a URL hash explicitly targets the Main Menu (`""`, `"#"`,
+`"#/"`, `"#menu"`, `"#/menu"`, or language-only hashes).
+-}
+isMenuHash : String -> Bool
+isMenuHash rawHash =
+    let
+        clean =
+            String.toLower (String.trim rawHash)
+    in
+    List.member clean [ "", "#", "#/", "#menu", "#/menu" ]
+        || String.startsWith "#lang=" clean
+        || String.startsWith "#/lang=" clean
+
+
+{-| Return `True` when a URL hash targets the solo City View (`"#/city"`, `"#city"`,
+`"#/play"`, or `"#play"` without a collaborative room suffix).
+-}
+isCityRouteHash : String -> Bool
+isCityRouteHash rawHash =
+    let
+        clean =
+            String.toLower (String.trim rawHash)
+    in
+    List.member clean [ "#city", "#/city", "#play", "#/play" ]
+
+
 init : Flags -> ( Model, Cmd Msg )
 init flags =
     let
         lang =
             CityI18n.fromFlag flags.language
 
-        city =
+        decodedSaved =
             if not (String.isEmpty (String.trim flags.savedCityJson)) then
                 case Persistence.decodeCityJson flags.savedCityJson of
                     Ok loaded ->
-                        loaded
+                        let
+                            savedPosix =
+                                if flags.savedCitySavedAt > 0 then
+                                    Just (Time.millisToPosix (round flags.savedCitySavedAt))
+
+                                else
+                                    Nothing
+                        in
+                        Just { city = loaded, savedAt = savedPosix }
 
                     Err _ ->
-                        Templates.defaultStarterCity lang
+                        Nothing
 
             else
-                Templates.defaultStarterCity lang
+                Nothing
+
+        defaultMenuName =
+            CityI18n.defaultCityName lang
+
+        defaultPreviewCity =
+            Templates.cityFromPreset lang HarborTown defaultMenuName 4
+
+        activeCity =
+            case decodedSaved of
+                Just saved ->
+                    saved.city
+
+                Nothing ->
+                    Templates.defaultStarterCity lang
+
+        hasRoomLink =
+            not (String.isEmpty (String.trim flags.initialRoomId))
+
+        initialViewMode =
+            if hasRoomLink then
+                CityPage
+
+            else if isCityRouteHash flags.initialHash && decodedSaved /= Nothing then
+                CityPage
+
+            else
+                MainMenuPage
+
+        initialPreviewSource =
+            case decodedSaved of
+                Just _ ->
+                    PreviewSaved
+
+                Nothing ->
+                    PreviewNew
+
+        initialPreview =
+            case initialPreviewSource of
+                PreviewSaved ->
+                    activeCity
+
+                PreviewNew ->
+                    defaultPreviewCity
 
         initialRoom =
             { roomId = flags.initialRoomId
@@ -203,17 +318,29 @@ init flags =
         baseModel =
             { resolver = PartLoading.resolverFromFlags flags
             , partCache = EmbeddedParts.cache
-            , meshes = Dict.empty
-            , city = city
-            , camera = Render.resetCameraForCity city 768
+            , meshes = Mesh.empty
+            , city = activeCity
+            , savedCity = decodedSaved
+            , camera = Render.resetCameraForCity activeCity 768
             , selectedLot = Just (LotCoord 1 1)
             , hoveredLot = Nothing
             , clipboard = Nothing
+            , showLotTemplates = False
             , canvasDrag = NoCanvasDrag
             , globeDrag = Nothing
             , heldKeys = { w = False, a = False, s = False, d = False }
-            , viewMode = ViewCity
+            , viewMode = initialViewMode
             , builder = Nothing
+            , menuCityName = defaultMenuName
+            , menuCityNameEdited = False
+            , menuGridSize = 4
+            , menuPreset = HarborTown
+            , menuPreviewSource = initialPreviewSource
+            , menuPreviewCity = defaultPreviewCity
+            , menuCamera = Render.resetCameraForCity initialPreview 768
+            , menuDragging = False
+            , timeZone = Time.utc
+            , shareCopiedTimer = 0
             , room = initialRoom
             , roomCodeInput = flags.initialRoomId
             , openModal = NoModal
@@ -229,24 +356,61 @@ init flags =
             , supportsPointerEvents = flags.supportsPointerEvents
             , baseUrl = flags.baseUrl
             }
+
+        ( refreshed, fetchCmd ) =
+            refreshCityMeshes baseModel
     in
-    refreshCityMeshes baseModel
+    ( refreshed
+    , Cmd.batch [ fetchCmd, Task.perform GotTimeZone Time.here ]
+    )
+
+
+displayedMenuCity : Model -> CityGrid
+displayedMenuCity model =
+    case ( model.menuPreviewSource, model.savedCity ) of
+        ( PreviewSaved, Just saved ) ->
+            saved.city
+
+        _ ->
+            model.menuPreviewCity
+
+
+activeSceneCity : Model -> CityGrid
+activeSceneCity model =
+    case model.viewMode of
+        MainMenuPage ->
+            displayedMenuCity model
+
+        _ ->
+            model.city
 
 
 refreshCityMeshes : Model -> ( Model, Cmd Msg )
 refreshCityMeshes model =
     let
         res =
-            Mesh.refreshMeshes model.city model.partCache model.meshes
+            Mesh.refreshMeshes (activeSceneCity model) model.partCache model.meshes
     in
     ( { model | meshes = res.meshes, partCache = res.cache }
     , PartLoading.fetchParts model.resolver PartFetched res.fetch
     )
 
 
-persistLocalCity : Model -> Cmd Msg
+persistLocalCity : Model -> ( Model, Cmd Msg )
 persistLocalCity model =
-    Ports.saveCity (Persistence.encodeCityJson model.city)
+    let
+        existingSavedAt =
+            model.savedCity |> Maybe.andThen .savedAt
+
+        updated =
+            { model | savedCity = Just { city = model.city, savedAt = existingSavedAt } }
+    in
+    ( updated
+    , Cmd.batch
+        [ Ports.saveCity (Persistence.encodeCityJson model.city)
+        , Task.perform GotSavedTimestamp Time.now
+        ]
+    )
 
 
 sfxCmd : String -> Cmd Msg
@@ -268,11 +432,15 @@ update msg model =
                 cam =
                     Camera.setViewportHeight (toFloat dims.height) model.camera
 
+                mCam =
+                    Camera.setViewportHeight (toFloat dims.height) model.menuCamera
+
                 sized =
                     { model
                         | viewportWidth = dims.width
                         , viewportHeight = dims.height
                         , camera = cam
+                        , menuCamera = mCam
                     }
             in
             case model.builder of
@@ -303,8 +471,11 @@ update msg model =
                         Nothing ->
                             Nothing
 
+                nextCopiedTimer =
+                    max 0 (model.shareCopiedTimer - dt)
+
                 nextCam =
-                    if model.viewMode == ViewCity && model.camera.navigation == Walk then
+                    if model.viewMode == CityPage && model.camera.navigation == Walk then
                         let
                             speed =
                                 Camera.walkSpeed model.camera * dt
@@ -345,14 +516,333 @@ update msg model =
 
                     else
                         model.camera
+
+                nextMenuCam =
+                    if model.viewMode == MainMenuPage && not model.menuDragging then
+                        let
+                            mc =
+                                model.menuCamera
+                        in
+                        { mc | azimuth = mc.azimuth + dt * 0.16 }
+
+                    else
+                        model.menuCamera
             in
-            ( { model | time = model.time + dt, toast = nextToast, camera = nextCam }, Cmd.none )
+            ( { model
+                | time = model.time + dt
+                , toast = nextToast
+                , shareCopiedTimer = nextCopiedTimer
+                , camera = nextCam
+                , menuCamera = nextMenuCam
+              }
+            , Cmd.none
+            )
+
+        GotTimeZone tz ->
+            ( { model | timeZone = tz }, Cmd.none )
+
+        GotSavedTimestamp posix ->
+            let
+                nextSaved =
+                    Maybe.map (\s -> { s | savedAt = Just posix }) model.savedCity
+            in
+            ( { model | savedCity = nextSaved }, Cmd.none )
+
+        HashChanged rawHash ->
+            if isMenuHash rawHash then
+                let
+                    nextPreviewSrc =
+                        if model.savedCity /= Nothing then
+                            PreviewSaved
+
+                        else
+                            PreviewNew
+
+                    updated =
+                        { model
+                            | viewMode = MainMenuPage
+                            , openModal = NoModal
+                            , builder = Nothing
+                            , menuPreviewSource = nextPreviewSrc
+                        }
+
+                    menuReset =
+                        { updated | menuCamera = Render.resetCameraForCity (displayedMenuCity updated) updated.viewportHeight }
+                in
+                refreshCityMeshes menuReset
+
+            else if isCityRouteHash rawHash then
+                case model.savedCity of
+                    Just saved ->
+                        let
+                            updated =
+                                { model
+                                    | viewMode = CityPage
+                                    , city = saved.city
+                                    , camera = Render.resetCameraForCity saved.city model.viewportHeight
+                                    , selectedLot = defaultLotSelection saved.city
+                                    , openModal = NoModal
+                                }
+                        in
+                        refreshCityMeshes updated
+
+                    Nothing ->
+                        ( { model | viewMode = MainMenuPage }, Cmd.none )
+
+            else
+                ( model, Cmd.none )
 
         KeyDown key ->
             updateHeldKey True key model
 
         KeyUp key ->
             updateHeldKey False key model
+
+        MenuCityNameChanged nextName ->
+            let
+                nextPreview =
+                    Templates.cityFromPreset model.language model.menuPreset nextName model.menuGridSize
+            in
+            ( { model
+                | menuCityName = nextName
+                , menuCityNameEdited = True
+                , menuPreviewSource = PreviewNew
+                , menuPreviewCity = nextPreview
+              }
+            , Cmd.none
+            )
+
+        MenuPickGridSize size ->
+            let
+                clamped =
+                    Bounds.clampGridSize size
+
+                nextPreview =
+                    Templates.cityFromPreset model.language model.menuPreset model.menuCityName clamped
+
+                updated =
+                    { model
+                        | menuGridSize = clamped
+                        , menuPreviewSource = PreviewNew
+                        , menuPreviewCity = nextPreview
+                        , menuCamera = Render.resetCameraForCity nextPreview model.viewportHeight
+                    }
+
+                ( refreshed, fetchCmd ) =
+                    refreshCityMeshes updated
+            in
+            ( refreshed, Cmd.batch [ fetchCmd, sfxCmd "rotate" ] )
+
+        MenuPickPreset preset ->
+            let
+                nextPreview =
+                    Templates.cityFromPreset model.language preset model.menuCityName model.menuGridSize
+
+                updated =
+                    { model
+                        | menuPreset = preset
+                        , menuPreviewSource = PreviewNew
+                        , menuPreviewCity = nextPreview
+                        , menuCamera = Render.resetCameraForCity nextPreview model.viewportHeight
+                    }
+
+                ( refreshed, fetchCmd ) =
+                    refreshCityMeshes updated
+            in
+            ( refreshed, Cmd.batch [ fetchCmd, sfxCmd "template" ] )
+
+        MenuSetPreviewSource src ->
+            let
+                updated =
+                    { model | menuPreviewSource = src }
+
+                withCam =
+                    { updated | menuCamera = Render.resetCameraForCity (displayedMenuCity updated) updated.viewportHeight }
+            in
+            refreshCityMeshes withCam
+
+        MenuCanvasMouseDown x y ->
+            ( { model
+                | menuCamera = Camera.onMouseDown x y model.menuCamera
+                , menuDragging = True
+              }
+            , Cmd.none
+            )
+
+        MenuCanvasMouseMove x y ->
+            if model.menuDragging then
+                ( { model | menuCamera = Camera.onMouseMove x y model.menuCamera }, Cmd.none )
+
+            else
+                ( model, Cmd.none )
+
+        MenuCanvasMouseUp ->
+            ( { model
+                | menuCamera = Camera.onMouseUp model.menuCamera
+                , menuDragging = False
+              }
+            , Cmd.none
+            )
+
+        MenuCanvasWheel dy ->
+            ( { model | menuCamera = Camera.onWheel dy model.menuCamera }, Cmd.none )
+
+        ContinueSavedCity ->
+            case model.savedCity of
+                Just saved ->
+                    let
+                        updated =
+                            { model
+                                | city = saved.city
+                                , camera = Render.resetCameraForCity saved.city model.viewportHeight
+                                , selectedLot = defaultLotSelection saved.city
+                                , viewMode = CityPage
+                                , openModal = NoModal
+                            }
+
+                        ( refreshed, fetchCmd ) =
+                            refreshCityMeshes updated
+
+                        hashCmd =
+                            if refreshed.room.role == LocalSolo then
+                                GamePorts.setUrlHash "#/city"
+
+                            else
+                                Cmd.none
+                    in
+                    ( refreshed, Cmd.batch [ fetchCmd, hashCmd, sfxCmd "join" ] )
+
+                Nothing ->
+                    update StartNewCity model
+
+        StartNewCity ->
+            let
+                newCity =
+                    Templates.cityFromPreset model.language model.menuPreset model.menuCityName model.menuGridSize
+
+                leaveCmd =
+                    if model.room.role /= LocalSolo then
+                        Ports.leaveCityRoom ()
+
+                    else
+                        Cmd.none
+
+                resetRoom =
+                    { roomId = ""
+                    , role = LocalSolo
+                    , status = Disconnected
+                    , mySlot = 1
+                    , myName = model.room.myName
+                    , peers = []
+                    }
+
+                updated =
+                    { model
+                        | city = newCity
+                        , camera = Render.resetCameraForCity newCity model.viewportHeight
+                        , selectedLot = defaultLotSelection newCity
+                        , viewMode = CityPage
+                        , openModal = NoModal
+                        , room = resetRoom
+                    }
+
+                ( persisted, saveCmd ) =
+                    persistLocalCity updated
+
+                ( refreshed, fetchCmd ) =
+                    refreshCityMeshes persisted
+            in
+            ( refreshed
+            , Cmd.batch [ fetchCmd, saveCmd, leaveCmd, GamePorts.setUrlHash "#/city", sfxCmd "template" ]
+            )
+
+        ReturnToMainMenu ->
+            let
+                nextPreviewSrc =
+                    if model.savedCity /= Nothing then
+                        PreviewSaved
+
+                    else
+                        PreviewNew
+
+                updated =
+                    { model
+                        | viewMode = MainMenuPage
+                        , openModal = NoModal
+                        , builder = Nothing
+                        , menuPreviewSource = nextPreviewSrc
+                    }
+
+                withCam =
+                    { updated | menuCamera = Render.resetCameraForCity (displayedMenuCity updated) updated.viewportHeight }
+
+                ( refreshed, fetchCmd ) =
+                    refreshCityMeshes withCam
+
+                hashCmd =
+                    if refreshed.room.role == LocalSolo then
+                        GamePorts.setUrlHash "#menu"
+
+                    else
+                        Cmd.none
+            in
+            ( refreshed, Cmd.batch [ fetchCmd, hashCmd ] )
+
+        MenuHostRoom ->
+            let
+                hostCity =
+                    displayedMenuCity model
+
+                cleanName =
+                    cleanBuilderName model.room.myName
+
+                oldRoom =
+                    model.room
+
+                updated =
+                    { model
+                        | city = hostCity
+                        , camera = Render.resetCameraForCity hostCity model.viewportHeight
+                        , selectedLot = defaultLotSelection hostCity
+                        , openModal = NoModal
+                        , room = { oldRoom | myName = cleanName }
+                    }
+
+                ( refreshed, fetchCmd ) =
+                    refreshCityMeshes updated
+            in
+            ( refreshed
+            , Cmd.batch
+                [ fetchCmd
+                , Ports.createCityRoom
+                    { roomId = ""
+                    , name = cleanName
+                    , city = Persistence.encodeCityValue hostCity
+                    }
+                ]
+            )
+
+        EnterRoomCity ->
+            let
+                updated =
+                    { model
+                        | viewMode = CityPage
+                        , camera = Render.resetCameraForCity model.city model.viewportHeight
+                        , selectedLot = defaultLotSelection model.city
+                        , openModal = NoModal
+                    }
+            in
+            refreshCityMeshes updated
+
+        BuilderNameChanged rawName ->
+            let
+                oldRoom =
+                    model.room
+            in
+            ( { model | room = { oldRoom | myName = rawName } }, Cmd.none )
+
+        SetLanguage nextLang ->
+            applyLanguageChange nextLang model
 
         CityNameChanged nextName ->
             let
@@ -362,11 +852,11 @@ update msg model =
                 nextCity =
                     { oldCity | cityName = nextName, version = oldCity.version + 1 }
 
-                updated =
-                    { model | city = nextCity }
+                ( persisted, saveCmd ) =
+                    persistLocalCity { model | city = nextCity }
             in
-            ( updated
-            , Cmd.batch [ persistLocalCity updated, syncFullIfInRoom updated ]
+            ( persisted
+            , Cmd.batch [ saveCmd, syncFullIfInRoom persisted ]
             )
 
         ResizeGrid size ->
@@ -389,9 +879,12 @@ update msg model =
                         , camera = Render.resetCameraForCity nextCity model.viewportHeight
                         , selectedLot = Nothing
                     }
+
+                ( persisted, saveCmd ) =
+                    persistLocalCity updated
             in
-            ( updated
-            , Cmd.batch [ persistLocalCity updated, syncFullIfInRoom updated, sfxCmd "rotate" ]
+            ( persisted
+            , Cmd.batch [ saveCmd, syncFullIfInRoom persisted, sfxCmd "rotate" ]
             )
 
         CanvasPointerDown x y btn shift ->
@@ -477,6 +970,12 @@ update msg model =
                 | camera = Camera.onMouseUp model.camera
                 , canvasDrag = NoCanvasDrag
                 , selectedLot = picked
+                , showLotTemplates =
+                    if clicked && picked /= model.selectedLot then
+                        False
+
+                    else
+                        model.showLotTemplates
               }
             , focusCmd
             )
@@ -548,14 +1047,22 @@ update msg model =
         GlobeReset ->
             ( { model | camera = Render.resetCameraForCity model.city model.viewportHeight }, Cmd.none )
 
-        ToggleWalkMode ->
+        SetCameraMode mode ->
             let
                 nextCam =
-                    if model.camera.navigation == Walk then
-                        Render.resetCameraForCity model.city model.viewportHeight
+                    case mode of
+                        CityView.OrbitMode ->
+                            Render.resetCameraForCity model.city model.viewportHeight
 
-                    else
-                        Camera.enterWalk 0.0 model.camera
+                        CityView.WalkMode ->
+                            if model.camera.navigation == Walk then
+                                model.camera
+
+                            else
+                                Camera.enterWalk 0.0 model.camera
+
+                        CityView.TopDownMode ->
+                            Render.topDownCameraForCity model.city model.viewportHeight
             in
             ( { model | camera = nextCam }, Cmd.none )
 
@@ -644,8 +1151,14 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        ToggleLotTemplates ->
+            ( { model | showLotTemplates = not model.showLotTemplates }, Cmd.none )
+
         DeselectLot ->
-            ( { model | selectedLot = Nothing }, Ports.sendLotFocus Encode.null )
+            ( { model | selectedLot = Nothing, showLotTemplates = False }, Ports.sendLotFocus Encode.null )
+
+        CityViewNoOp ->
+            ( model, Cmd.none )
 
         ToggleModal nextModal ->
             let
@@ -662,7 +1175,7 @@ update msg model =
             ( { model | openModal = NoModal }
             , Ports.createCityRoom
                 { roomId = ""
-                , name = model.room.myName
+                , name = cleanBuilderName model.room.myName
                 , city = Persistence.encodeCityValue model.city
                 }
             )
@@ -677,15 +1190,24 @@ update msg model =
 
             else
                 ( { model | openModal = NoModal }
-                , Ports.joinCityRoom { roomId = code, name = model.room.myName }
+                , Ports.joinCityRoom { roomId = code, name = cleanBuilderName model.room.myName }
                 )
 
         LeaveRoom ->
+            let
+                hashCmd =
+                    case model.viewMode of
+                        MainMenuPage ->
+                            GamePorts.setUrlHash "#menu"
+
+                        _ ->
+                            GamePorts.setUrlHash "#/city"
+            in
             ( { model
                 | room = { roomId = "", role = LocalSolo, status = Disconnected, mySlot = 1, myName = model.room.myName, peers = [] }
                 , openModal = NoModal
               }
-            , Ports.leaveCityRoom ()
+            , Cmd.batch [ Ports.leaveCityRoom (), hashCmd ]
             )
 
         RoomCodeInput raw ->
@@ -694,9 +1216,12 @@ update msg model =
         CopyRoomLink ->
             let
                 url =
-                    model.baseUrl ++ "#/city/" ++ model.room.roomId
+                    MainMenu.makeCityRoomUrl model.baseUrl model.room.roomId
             in
-            ( { model | toast = Just ( CityI18n.roomCopiedToast model.language model.room.roomId, 3.0 ) }
+            ( { model
+                | toast = Just ( CityI18n.roomCopiedToast model.language model.room.roomId, 3.0 )
+                , shareCopiedTimer = 2.5
+              }
             , GamePorts.copyShareUrl url
             )
 
@@ -706,13 +1231,23 @@ update msg model =
                     let
                         justJoined =
                             model.room.status /= Connected && room.status == Connected
+
+                        hashCmd =
+                            if not (String.isEmpty (String.trim room.roomId)) && room.roomId /= model.room.roomId then
+                                GamePorts.setUrlHash ("#/city/" ++ room.roomId)
+
+                            else
+                                Cmd.none
                     in
                     ( { model | room = room }
-                    , if justJoined then
-                        sfxCmd "join"
+                    , Cmd.batch
+                        [ hashCmd
+                        , if justJoined then
+                            sfxCmd "join"
 
-                      else
-                        Cmd.none
+                          else
+                            Cmd.none
+                        ]
                     )
 
                 NoRoom ->
@@ -727,16 +1262,28 @@ update msg model =
             case Decode.decodeValue Persistence.decodeCityValue raw of
                 Ok nextCity ->
                     let
+                        nextViewMode =
+                            if model.viewMode == MainMenuPage && model.room.role == RoomGuest then
+                                CityPage
+
+                            else
+                                model.viewMode
+
                         updated =
                             { model
                                 | city = nextCity
                                 , camera = Render.resetCameraForCity nextCity model.viewportHeight
+                                , selectedLot = defaultLotSelection nextCity
+                                , viewMode = nextViewMode
                             }
 
+                        ( persisted, saveCmd ) =
+                            persistLocalCity updated
+
                         ( refreshed, fetchCmd ) =
-                            refreshCityMeshes updated
+                            refreshCityMeshes persisted
                     in
-                    ( refreshed, Cmd.batch [ fetchCmd, persistLocalCity refreshed ] )
+                    ( refreshed, Cmd.batch [ fetchCmd, saveCmd ] )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -769,10 +1316,13 @@ update msg model =
                             nextCity =
                                 { oldCity | lots = nextLots, version = oldCity.version + 1 }
 
+                            ( persisted, saveCmd ) =
+                                persistLocalCity { model | city = nextCity }
+
                             ( refreshed, fetchCmd ) =
-                                refreshCityMeshes { model | city = nextCity }
+                                refreshCityMeshes persisted
                         in
-                        ( refreshed, Cmd.batch [ fetchCmd, persistLocalCity refreshed ] )
+                        ( refreshed, Cmd.batch [ fetchCmd, saveCmd ] )
 
                     else
                         ( model, Cmd.none )
@@ -796,10 +1346,13 @@ update msg model =
                         , selectedLot = Just (LotCoord 1 1)
                     }
 
+                ( persisted, saveCmd ) =
+                    persistLocalCity updated
+
                 ( refreshed, fetchCmd ) =
-                    refreshCityMeshes updated
+                    refreshCityMeshes persisted
             in
-            ( refreshed, Cmd.batch [ fetchCmd, persistLocalCity refreshed, syncFullIfInRoom refreshed, sfxCmd "template" ] )
+            ( refreshed, Cmd.batch [ fetchCmd, saveCmd, syncFullIfInRoom refreshed, sfxCmd "template" ] )
 
         NewEmptyCity ->
             let
@@ -814,10 +1367,13 @@ update msg model =
                         , selectedLot = Just (LotCoord 0 0)
                     }
 
+                ( persisted, saveCmd ) =
+                    persistLocalCity updated
+
                 ( refreshed, fetchCmd ) =
-                    refreshCityMeshes updated
+                    refreshCityMeshes persisted
             in
-            ( refreshed, Cmd.batch [ fetchCmd, persistLocalCity refreshed, syncFullIfInRoom refreshed, sfxCmd "clear" ] )
+            ( refreshed, Cmd.batch [ fetchCmd, saveCmd, syncFullIfInRoom refreshed, sfxCmd "clear" ] )
 
         ExportMpd ->
             ( { model | openModal = NoModal, toast = Just ( CityI18n.tr model.language "Exported city .mpd" "Kaupunki viety .mpd-tiedostona", 3.0 ) }
@@ -844,17 +1400,37 @@ update msg model =
             case Persistence.decodeCityJson raw of
                 Ok imported ->
                     let
+                        wasMenu =
+                            model.viewMode == MainMenuPage
+
                         updated =
                             { model
                                 | city = imported
                                 , camera = Render.resetCameraForCity imported model.viewportHeight
+                                , selectedLot = defaultLotSelection imported
+                                , viewMode =
+                                    if wasMenu then
+                                        CityPage
+
+                                    else
+                                        model.viewMode
                                 , toast = Just ( CityI18n.tr model.language "City imported!" "Kaupunki tuotu!", 3.0 )
                             }
 
+                        ( persisted, saveCmd ) =
+                            persistLocalCity updated
+
                         ( refreshed, fetchCmd ) =
-                            refreshCityMeshes updated
+                            refreshCityMeshes persisted
+
+                        hashCmd =
+                            if wasMenu && refreshed.room.role == LocalSolo then
+                                GamePorts.setUrlHash "#/city"
+
+                            else
+                                Cmd.none
                     in
-                    ( refreshed, Cmd.batch [ fetchCmd, persistLocalCity refreshed, syncFullIfInRoom refreshed, sfxCmd "save" ] )
+                    ( refreshed, Cmd.batch [ fetchCmd, saveCmd, syncFullIfInRoom refreshed, hashCmd, sfxCmd "save" ] )
 
                 Err _ ->
                     ( { model | toast = Just ( CityI18n.tr model.language "Invalid city JSON file." "Virheellinen kaupunki-JSON.", 4.0 ) }
@@ -870,21 +1446,8 @@ update msg model =
 
                         En ->
                             Fi
-
-                langCode =
-                    case nextLang of
-                        Fi ->
-                            "fi"
-
-                        En ->
-                            "en"
-
-                nextBuilder =
-                    Maybe.map (Build.setLanguage nextLang) model.builder
             in
-            ( { model | language = nextLang, builder = nextBuilder }
-            , GamePorts.storeLanguage langCode
-            )
+            applyLanguageChange nextLang model
 
         ToggleMute ->
             let
@@ -905,19 +1468,24 @@ update msg model =
                             ( { model | builder = Just nextBuild }, Cmd.map BuildMsg buildCmd )
 
                         Build.Cancelled ->
-                            ( { model | viewMode = ViewCity, builder = Nothing }, Cmd.none )
+                            ( { model | viewMode = CityPage, builder = Nothing }, Cmd.none )
 
                         Build.Saved saved ->
                             let
                                 ts =
                                     model.timestampCounter + 1
 
+                                ldrawStr =
+                                    Writer.writeDocument saved.document
+
                                 nextEl : LotElement
                                 nextEl =
                                     { id = "lot-" ++ String.fromInt saved.coord.row ++ "-" ++ String.fromInt saved.coord.col ++ "-" ++ String.fromInt ts
                                     , name = saved.name
                                     , category = Stats.inferCategory saved.document saved.heightPlates
-                                    , ldrawText = Writer.writeDocument saved.document
+                                    , ldrawText = ldrawStr
+                                    , document = saved.document
+                                    , contentHash = hashLdrawText ldrawStr
                                     , templateId = saved.templateId
                                     , rotation = 0
                                     , updatedAt = ts
@@ -927,12 +1495,68 @@ update msg model =
                                     }
 
                                 ( afterLot, lotCmd ) =
-                                    applyLocalLotChange saved.coord (Just nextEl) { model | viewMode = ViewCity, builder = Nothing, timestampCounter = ts } "save"
+                                    applyLocalLotChange saved.coord (Just nextEl) { model | viewMode = CityPage, builder = Nothing, timestampCounter = ts } "save"
                             in
                             ( afterLot, Cmd.batch [ Cmd.map BuildMsg buildCmd, lotCmd ] )
 
                 Nothing ->
                     ( model, Cmd.none )
+
+
+applyLanguageChange : Language -> Model -> ( Model, Cmd Msg )
+applyLanguageChange nextLang model =
+    let
+        langCode =
+            case nextLang of
+                Fi ->
+                    "fi"
+
+                En ->
+                    "en"
+
+        nextMenuCityName =
+            if model.menuCityNameEdited then
+                model.menuCityName
+
+            else
+                CityI18n.defaultCityName nextLang
+
+        nextPreview =
+            Templates.cityFromPreset nextLang model.menuPreset nextMenuCityName model.menuGridSize
+
+        nextBuilder =
+            Maybe.map (Build.setLanguage nextLang) model.builder
+    in
+    ( { model
+        | language = nextLang
+        , builder = nextBuilder
+        , menuCityName = nextMenuCityName
+        , menuPreviewCity = nextPreview
+      }
+    , GamePorts.storeLanguage langCode
+    )
+
+
+cleanBuilderName : String -> String
+cleanBuilderName raw =
+    let
+        trimmed =
+            String.trim raw
+    in
+    if String.isEmpty trimmed then
+        "Rakentaja"
+
+    else
+        String.left 24 trimmed
+
+
+defaultLotSelection : CityGrid -> Maybe LotCoord
+defaultLotSelection city =
+    if city.cols > 1 && city.rows > 1 && not (Dict.isEmpty city.lots) then
+        Just (LotCoord 1 1)
+
+    else
+        Just (LotCoord 0 0)
 
 
 openEditorForLot : LotCoord -> Model -> ( Model, Cmd Msg )
@@ -966,7 +1590,7 @@ openEditorForLot coord model =
                 coord
                 initial
     in
-    ( { model | viewMode = ViewLotEditor, builder = Just buildModel }
+    ( { model | viewMode = LotEditorPage, builder = Just buildModel }
     , Cmd.batch [ Cmd.map BuildMsg buildCmd, Ports.sendLotFocus (Persistence.encodeLotFocus (Just coord)) ]
     )
 
@@ -988,8 +1612,11 @@ applyLocalLotChange coord maybeEl model sfxName =
         nextCity =
             { oldCity | lots = nextLots, version = oldCity.version + 1 }
 
+        ( persisted, saveCmd ) =
+            persistLocalCity { model | city = nextCity }
+
         ( refreshed, fetchCmd ) =
-            refreshCityMeshes { model | city = nextCity }
+            refreshCityMeshes persisted
 
         syncCmd =
             if refreshed.room.role /= LocalSolo then
@@ -999,7 +1626,7 @@ applyLocalLotChange coord maybeEl model sfxName =
                 Cmd.none
     in
     ( refreshed
-    , Cmd.batch [ fetchCmd, persistLocalCity refreshed, syncCmd, sfxCmd sfxName ]
+    , Cmd.batch [ fetchCmd, saveCmd, syncCmd, sfxCmd sfxName ]
     )
 
 
@@ -1076,28 +1703,78 @@ slugify raw =
 view : Model -> Html Msg
 view model =
     case ( model.viewMode, model.builder ) of
-        ( ViewLotEditor, Just build ) ->
+        ( MainMenuPage, _ ) ->
+            MainMenu.view
+                { language = model.language
+                , audioMuted = model.audioMuted
+                , savedCity = model.savedCity
+                , previewSource = model.menuPreviewSource
+                , previewCity = displayedMenuCity model
+                , previewStats = Stats.computeStats (displayedMenuCity model)
+                , meshes = model.meshes
+                , camera = model.menuCamera
+                , time = model.time
+                , timeZone = model.timeZone
+                , viewportWidth = model.viewportWidth
+                , viewportHeight = model.viewportHeight
+                , newCityName = model.menuCityName
+                , gridSize = model.menuGridSize
+                , preset = model.menuPreset
+                , room = model.room
+                , roomCodeInput = model.roomCodeInput
+                , builderName = model.room.myName
+                , baseUrl = model.baseUrl
+                , shareCopiedNotice = model.shareCopiedTimer > 0
+                , toast = Maybe.map Tuple.first model.toast
+                }
+                { onSetLanguage = SetLanguage
+                , onToggleMute = ToggleMute
+                , onContinueSaved = ContinueSavedCity
+                , onCityNameChanged = MenuCityNameChanged
+                , onSelectGridSize = MenuPickGridSize
+                , onSelectPreset = MenuPickPreset
+                , onSetPreviewSource = MenuSetPreviewSource
+                , onStartNewCity = StartNewCity
+                , onImportJson = RequestImportJson
+                , onBuilderNameChanged = BuilderNameChanged
+                , onHostRoom = MenuHostRoom
+                , onRoomCodeChanged = RoomCodeInput
+                , onJoinRoom = JoinRoom
+                , onCopyRoomLink = CopyRoomLink
+                , onEnterRoomCity = EnterRoomCity
+                , onLeaveRoom = LeaveRoom
+                , onMouseDown = MenuCanvasMouseDown
+                , onMouseMove = MenuCanvasMouseMove
+                , onMouseUp = MenuCanvasMouseUp
+                , onWheel = MenuCanvasWheel
+                }
+
+        ( LotEditorPage, Just build ) ->
             Html.map BuildMsg (Build.view build)
 
         _ ->
             CityView.viewCity
                 { city = model.city
+                , stats = Stats.computeStats model.city
                 , meshes = model.meshes
                 , camera = model.camera
                 , selectedLot = model.selectedLot
                 , hoveredLot = model.hoveredLot
                 , clipboard = model.clipboard
+                , showLotTemplates = model.showLotTemplates
                 , room = model.room
                 , roomCodeInput = model.roomCodeInput
                 , openModal = model.openModal
                 , toast = Maybe.map Tuple.first model.toast
                 , audioMuted = model.audioMuted
                 , language = model.language
+                , baseUrl = model.baseUrl
                 , time = model.time
                 , width = model.viewportWidth
                 , height = model.viewportHeight
                 , actions =
-                    { onCityNameChanged = CityNameChanged
+                    { onOpenMainMenu = ReturnToMainMenu
+                    , onCityNameChanged = CityNameChanged
                     , onResizeGrid = ResizeGrid
                     , onPointerDown = CanvasPointerDown
                     , onPointerMove = CanvasPointerMove
@@ -1110,13 +1787,14 @@ view model =
                     , onGlobeZoom = GlobeZoom
                     , onGlobeZoomDone = GlobeZoomDone
                     , onGlobeReset = GlobeReset
-                    , onToggleWalk = ToggleWalkMode
+                    , onSetCameraMode = SetCameraMode
                     , onEditSelectedLot = EditSelectedLot
                     , onRotateSelectedLot = RotateSelectedLot
                     , onCopySelectedLot = CopySelectedLot
                     , onPasteSelectedLot = PasteSelectedLot
                     , onClearSelectedLot = ClearSelectedLot
                     , onStampTemplate = StampTemplate
+                    , onToggleLotTemplates = ToggleLotTemplates
                     , onDeselectLot = DeselectLot
                     , onToggleModal = ToggleModal
                     , onHostRoom = HostRoom
@@ -1131,6 +1809,7 @@ view model =
                     , onImportJson = RequestImportJson
                     , onToggleLanguage = ToggleLanguage
                     , onToggleMute = ToggleMute
+                    , onNoOp = CityViewNoOp
                     }
                 }
 
@@ -1139,6 +1818,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ GamePorts.viewportResized ViewportResized
+        , GamePorts.hashChanged HashChanged
         , Browser.Events.onAnimationFrameDelta AnimationTick
         , Ports.cityRoomStateChanged RoomStateChanged
         , Ports.cityRemoteSnapshot RemoteSnapshotReceived
@@ -1146,14 +1826,17 @@ subscriptions model =
         , Ports.cityRoomError RoomError
         , Ports.cityJsonImported JsonImported
         , case ( model.viewMode, model.builder ) of
-            ( ViewLotEditor, Just build ) ->
+            ( LotEditorPage, Just build ) ->
                 Sub.map BuildMsg (Build.subscriptions build)
 
-            _ ->
+            ( CityPage, _ ) ->
                 Sub.batch
                     [ Browser.Events.onKeyDown nonInputKeyDownDecoder
                     , Browser.Events.onKeyUp (Decode.field "key" Decode.string |> Decode.map KeyUp)
                     ]
+
+            _ ->
+                Sub.none
         ]
 
 

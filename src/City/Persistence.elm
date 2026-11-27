@@ -29,10 +29,12 @@ import City.Types
         , RoomRole(..)
         , categoryFromString
         , categoryToString
+        , hashLdrawText
         )
 import Dict
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
+import LDraw.Document as Document
 
 
 {-| Incoming incremental lot update message from `city-sync.js`.
@@ -200,6 +202,8 @@ decodeLotElement =
             , name = name
             , category = categoryFromString catStr
             , ldrawText = ldraw
+            , document = Document.parse ldraw
+            , contentHash = hashLdrawText ldraw
             , templateId = templateId
             , rotation = modBy 4 rot
             , updatedAt = updatedAt

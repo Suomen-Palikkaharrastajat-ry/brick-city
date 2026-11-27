@@ -1,9 +1,12 @@
 module City.Templates exposing
-    ( Template
+    ( CityPreset(..)
+    , Template
     , all
+    , allPresets
     , blankCity
     , byId
     , centralPark
+    , cityFromPreset
     , cornerRoad
     , defaultStarterCity
     , elementFromTemplate
@@ -13,6 +16,7 @@ module City.Templates exposing
     , intersection
     , microHouse
     , modernSkyscraper
+    , presetId
     , straightRoad
     , waterfrontCanal
     )
@@ -26,7 +30,7 @@ covering `-80..80` LDU in X and Z, and stays strictly within the max height of
 -}
 
 import City.Bounds as Bounds
-import City.Types exposing (CityGrid, ElementCategory(..), LotElement)
+import City.Types exposing (CityGrid, ElementCategory(..), LotElement, hashLdrawText)
 import Dict
 import I18n exposing (Language(..))
 import LDraw.Document as Document exposing (Document)
@@ -42,6 +46,8 @@ type alias Template =
     , descriptionFi : String
     , category : ElementCategory
     , ldrawText : String
+    , document : Document
+    , contentHash : String
     , partCount : Int
     , heightPlates : Int
     }
@@ -87,6 +93,8 @@ elementFromTemplate lang updatedAt updatedBy rotation tmpl =
                 tmpl.nameFi
     , category = tmpl.category
     , ldrawText = tmpl.ldrawText
+    , document = tmpl.document
+    , contentHash = tmpl.contentHash
     , templateId = Just tmpl.id
     , rotation = modBy 4 rotation
     , updatedAt = updatedAt
@@ -123,6 +131,90 @@ blankCity name cols rows =
     }
 
 
+{-| Starter city layout presets available on the Main Menu.
+-}
+type CityPreset
+    = HarborTown
+    | GridMetropolis
+    | GreenValley
+    | BlankCanvas
+
+
+{-| Ordered list of all starter city layout presets.
+-}
+allPresets : List CityPreset
+allPresets =
+    [ HarborTown
+    , GridMetropolis
+    , GreenValley
+    , BlankCanvas
+    ]
+
+
+{-| Stable identifier string for a `CityPreset` (used for test IDs and serialization).
+-}
+presetId : CityPreset -> String
+presetId preset =
+    case preset of
+        HarborTown ->
+            "harbor-town"
+
+        GridMetropolis ->
+            "grid-metropolis"
+
+        GreenValley ->
+            "green-valley"
+
+        BlankCanvas ->
+            "blank-canvas"
+
+
+{-| Generate a `CityGrid` from a starter layout preset, city name, and grid
+dimension (`4`, `5`, `6`, `8`, clamped to `2..8`).
+-}
+cityFromPreset : Language -> CityPreset -> String -> Int -> CityGrid
+cityFromPreset lang preset rawName rawSize =
+    let
+        size =
+            Bounds.clampGridSize rawSize
+
+        trimmed =
+            String.trim rawName
+
+        name =
+            if String.isEmpty trimmed then
+                case lang of
+                    En ->
+                        "Brick Bay"
+
+                    Fi ->
+                        "Palikkalahti"
+
+            else
+                trimmed
+
+        lots =
+            case preset of
+                HarborTown ->
+                    harborTownLots lang size
+
+                GridMetropolis ->
+                    gridMetropolisLots lang size
+
+                GreenValley ->
+                    greenValleyLots lang size
+
+                BlankCanvas ->
+                    Dict.empty
+    in
+    { cityName = name
+    , cols = size
+    , rows = size
+    , lots = lots
+    , version = 1
+    }
+
+
 {-| Pre-built 4x4 microscale starter city showcasing connected roads, a central
 park, a canal, houses, towers, a skyscraper, and an industrial plant, while
 leaving open green lots ready for the player to build.
@@ -130,9 +222,6 @@ leaving open green lots ready for the player to build.
 defaultStarterCity : Language -> CityGrid
 defaultStarterCity lang =
     let
-        stamp row col rot tmpl dict =
-            Dict.insert ( row, col ) (elementFromTemplate lang 1 "Kaupunki" rot tmpl) dict
-
         name =
             case lang of
                 En ->
@@ -140,31 +229,172 @@ defaultStarterCity lang =
 
                 Fi ->
                     "Palikkalahti"
-
-        lots =
-            Dict.empty
-                |> stamp 0 0 0 cornerRoad
-                |> stamp 0 1 1 straightRoad
-                |> stamp 0 2 0 microHouse
-                |> stamp 0 3 0 industrialPlant
-                |> stamp 1 0 0 straightRoad
-                |> stamp 1 1 0 intersection
-                |> stamp 1 2 1 straightRoad
-                |> stamp 1 3 3 waterfrontCanal
-                |> stamp 2 0 1 microHouse
-                |> stamp 2 1 0 straightRoad
-                |> stamp 2 2 0 centralPark
-                |> stamp 2 3 0 highRise
-                |> stamp 3 0 0 modernSkyscraper
-                |> stamp 3 1 3 cornerRoad
-                |> stamp 3 2 1 straightRoad
     in
     { cityName = name
     , cols = 4
     , rows = 4
-    , lots = lots
+    , lots = harborTownLots lang 4
     , version = 1
     }
+
+
+stampPresetLot : Language -> Int -> Int -> Int -> Template -> Dict.Dict ( Int, Int ) LotElement -> Dict.Dict ( Int, Int ) LotElement
+stampPresetLot lang row col rot tmpl dict =
+    Dict.insert ( row, col ) (elementFromTemplate lang 1 "Kaupunki" rot tmpl) dict
+
+
+harborTownLots : Language -> Int -> Dict.Dict ( Int, Int ) LotElement
+harborTownLots lang size =
+    let
+        base4 =
+            Dict.empty
+                |> stampPresetLot lang 0 0 0 cornerRoad
+                |> stampPresetLot lang 0 1 1 straightRoad
+                |> stampPresetLot lang 0 2 0 microHouse
+                |> stampPresetLot lang 0 3 0 industrialPlant
+                |> stampPresetLot lang 1 0 0 straightRoad
+                |> stampPresetLot lang 1 1 0 intersection
+                |> stampPresetLot lang 1 2 1 straightRoad
+                |> stampPresetLot lang 1 3 3 waterfrontCanal
+                |> stampPresetLot lang 2 0 1 microHouse
+                |> stampPresetLot lang 2 1 0 straightRoad
+                |> stampPresetLot lang 2 2 0 centralPark
+                |> stampPresetLot lang 2 3 0 highRise
+                |> stampPresetLot lang 3 0 0 modernSkyscraper
+                |> stampPresetLot lang 3 1 3 cornerRoad
+                |> stampPresetLot lang 3 2 1 straightRoad
+    in
+    if size <= 4 then
+        base4
+            |> Dict.filter (\( r, c ) _ -> r < size && c < size)
+
+    else
+        let
+            last =
+                size - 1
+
+            eastCanal =
+                List.range 1 last
+                    |> List.foldl (\r acc -> stampPresetLot lang r last 0 waterfrontCanal acc) Dict.empty
+
+            southAvenue =
+                List.range 2 (last - 1)
+                    |> List.foldl (\c acc -> stampPresetLot lang 1 c 1 straightRoad acc) eastCanal
+
+            westAvenue =
+                List.range 3 (last - 1)
+                    |> List.foldl (\r acc -> stampPresetLot lang r 1 0 straightRoad acc) southAvenue
+        in
+        westAvenue
+            |> stampPresetLot lang 0 0 0 cornerRoad
+            |> stampPresetLot lang 0 1 1 straightRoad
+            |> stampPresetLot lang 0 2 0 microHouse
+            |> stampPresetLot lang 0 last 0 industrialPlant
+            |> stampPresetLot lang 1 0 0 straightRoad
+            |> stampPresetLot lang 1 1 0 intersection
+            |> stampPresetLot lang 2 0 1 microHouse
+            |> stampPresetLot lang 2 1 0 straightRoad
+            |> stampPresetLot lang 2 2 0 centralPark
+            |> stampPresetLot lang 2 (last - 1) 0 highRise
+            |> stampPresetLot lang 3 0 0 modernSkyscraper
+            |> stampPresetLot lang last 1 3 cornerRoad
+            |> stampPresetLot lang last 2 1 straightRoad
+
+
+gridMetropolisLots : Language -> Int -> Dict.Dict ( Int, Int ) LotElement
+gridMetropolisLots lang size =
+    let
+        last =
+            size - 1
+
+        mid =
+            size // 2
+
+        coords =
+            List.range 0 last
+                |> List.concatMap (\r -> List.range 0 last |> List.map (\c -> ( r, c )))
+    in
+    List.foldl
+        (\( r, c ) acc ->
+            if r == 0 && c == 0 then
+                stampPresetLot lang r c 0 cornerRoad acc
+
+            else if r == 0 && c == last then
+                stampPresetLot lang r c 1 cornerRoad acc
+
+            else if r == last && c == last then
+                stampPresetLot lang r c 2 cornerRoad acc
+
+            else if r == last && c == 0 then
+                stampPresetLot lang r c 3 cornerRoad acc
+
+            else if (r == 0 || r == last) && c == mid then
+                stampPresetLot lang r c 0 intersection acc
+
+            else if (c == 0 || c == last) && r == mid then
+                stampPresetLot lang r c 0 intersection acc
+
+            else if r == 0 || r == last then
+                stampPresetLot lang r c 1 straightRoad acc
+
+            else if c == 0 || c == last then
+                stampPresetLot lang r c 0 straightRoad acc
+
+            else if r == mid && c == mid then
+                stampPresetLot lang r c 0 intersection acc
+
+            else if r == mid then
+                stampPresetLot lang r c 1 straightRoad acc
+
+            else if c == mid then
+                stampPresetLot lang r c 0 straightRoad acc
+
+            else
+                acc
+        )
+        Dict.empty
+        coords
+
+
+greenValleyLots : Language -> Int -> Dict.Dict ( Int, Int ) LotElement
+greenValleyLots lang size =
+    let
+        last =
+            size - 1
+
+        canalCol =
+            last
+
+        withCanal =
+            List.range 0 last
+                |> List.foldl (\r acc -> stampPresetLot lang r canalCol 0 waterfrontCanal acc) Dict.empty
+
+        midRow =
+            (size - 1) // 2
+
+        midCol =
+            max 0 ((size - 2) // 2)
+
+        parkCoords =
+            if size >= 6 then
+                [ ( midRow, midCol ), ( midRow + 1, midCol ), ( midRow, midCol + 1 ), ( midRow + 1, midCol + 1 ) ]
+
+            else if size == 5 then
+                [ ( midRow, midCol ), ( midRow, midCol + 1 ) ]
+
+            else
+                [ ( midRow, midCol ) ]
+    in
+    List.foldl
+        (\( r, c ) acc ->
+            if c < canalCol then
+                stampPresetLot lang r c 0 centralPark acc
+
+            else
+                acc
+        )
+        withCanal
+        parkCoords
 
 
 
@@ -239,6 +469,8 @@ buildTemplate cfg =
     , descriptionFi = cfg.descriptionFi
     , category = cfg.category
     , ldrawText = text
+    , document = doc
+    , contentHash = hashLdrawText text
     , partCount = measured.partCount
     , heightPlates = measured.heightPlates
     }
@@ -384,19 +616,23 @@ cornerRoad =
         , lines =
             [ line colDarkBluishGray 0 0 0 straightM "41539.dat"
             , -- Road surface from -Z (0..-80) turning to +X (0..80)
-              line colBlack 0 -8 -40 turn90M "87079.dat"
-            , line colBlack 40 -8 0 straightM "87079.dat"
-            , line colBlack 0 -8 20 straightM "3068b.dat"
+              line colBlack 0 -8 -60 straightM "87079.dat"
+            , line colBlack 0 -8 -20 straightM "87079.dat"
+            , line colBlack 0 -8 20 straightM "87079.dat"
+            , line colBlack 60 -8 0 turn90M "87079.dat"
             , -- Outer sidewalk (west and south)
-              line colLightBluishGray -60 -8 0 turn90M "87079.dat"
-            , line colLightBluishGray -60 -8 -60 straightM "3068b.dat"
+              line colLightBluishGray -60 -8 -60 straightM "3068b.dat"
+            , line colLightBluishGray -60 -8 -20 straightM "3068b.dat"
+            , line colLightBluishGray -60 -8 20 straightM "3068b.dat"
             , line colLightBluishGray -60 -8 60 straightM "3068b.dat"
-            , line colLightBluishGray 20 -8 60 straightM "87079.dat"
-            , line colLightBluishGray 70 -8 60 turn90M "3069b.dat"
-            , -- Inner corner plaza & micro tree
+            , line colLightBluishGray -20 -8 60 straightM "3068b.dat"
+            , line colLightBluishGray 20 -8 60 straightM "3068b.dat"
+            , line colLightBluishGray 60 -8 60 straightM "3068b.dat"
+            , -- Inner corner sidewalk
               line colLightBluishGray 60 -8 -60 straightM "3068b.dat"
-            , line colReddishBrown 70 -32 -70 straightM "3062b.dat"
-            , line colGreen 70 -56 -70 straightM "4589.dat"
+            , -- Outer sidewalk streetlamp
+              line colDarkBluishGray -70 -32 50 straightM "3062b.dat"
+            , line colTransYellow -70 -40 50 straightM "6141.dat"
             ]
         }
 
@@ -414,12 +650,21 @@ intersection =
         , category = Road
         , lines =
             [ line colDarkBluishGray 0 0 0 straightM "41539.dat"
-            , -- Central asphalt square + four approaches
-              line colBlack 0 -8 0 straightM "3068b.dat"
-            , line colBlack 0 -8 -50 straightM "3068b.dat"
-            , line colBlack 0 -8 50 straightM "3068b.dat"
-            , line colBlack -50 -8 0 straightM "3068b.dat"
-            , line colBlack 50 -8 0 straightM "3068b.dat"
+            , -- Central asphalt square
+              line colBlack -20 -8 -20 straightM "3068b.dat"
+            , line colBlack 20 -8 -20 straightM "3068b.dat"
+            , line colBlack -20 -8 20 straightM "3068b.dat"
+            , line colBlack 20 -8 20 straightM "3068b.dat"
+            , -- Four branch approaches
+              line colBlack 0 -8 -60 straightM "87079.dat"
+            , line colBlack 0 -8 60 straightM "87079.dat"
+            , line colBlack -60 -8 0 turn90M "87079.dat"
+            , line colBlack 60 -8 0 turn90M "87079.dat"
+            , -- Corner sidewalks
+              line colLightBluishGray -60 -8 -60 straightM "3068b.dat"
+            , line colLightBluishGray 60 -8 -60 straightM "3068b.dat"
+            , line colLightBluishGray -60 -8 60 straightM "3068b.dat"
+            , line colLightBluishGray 60 -8 60 straightM "3068b.dat"
             , -- White crosswalk stripes
               line colWhite -10 -16 -30 straightM "3070b.dat"
             , line colWhite 10 -16 -30 straightM "3070b.dat"
@@ -429,16 +674,6 @@ intersection =
             , line colWhite -30 -16 10 straightM "3070b.dat"
             , line colWhite 30 -16 -10 straightM "3070b.dat"
             , line colWhite 30 -16 10 straightM "3070b.dat"
-            , -- Corner sidewalks
-              line colLightBluishGray -60 -8 -60 straightM "3068b.dat"
-            , line colLightBluishGray 60 -8 -60 straightM "3068b.dat"
-            , line colLightBluishGray -60 -8 60 straightM "3068b.dat"
-            , line colLightBluishGray 60 -8 60 straightM "3068b.dat"
-            , -- Traffic light posts
-              line colDarkBluishGray -50 -32 -50 straightM "3062b.dat"
-            , line colYellow -50 -40 -50 straightM "6141.dat"
-            , line colDarkBluishGray 50 -32 50 straightM "3062b.dat"
-            , line colGreen 50 -40 50 straightM "6141.dat"
             ]
         }
 
@@ -456,34 +691,29 @@ microHouse =
         , category = Residential
         , lines =
             [ line colGreen 0 0 0 straightM "41539.dat"
-            , -- Front footpath & patio tiles
-              line colLightBluishGray 0 -8 60 straightM "2431.dat"
-            , line colTan 0 -8 20 straightM "87079.dat"
-            , -- House 1 (west): tan & trans-light-blue walls + dark red gable roof
-              line colTan -40 -24 -20 turn90M "3001.dat"
-            , line colTransLightBlue -30 -32 -10 straightM "3024.dat"
-            , line colTransLightBlue -30 -32 10 straightM "3024.dat"
-            , line colTan -50 -32 0 turn90M "3023b.dat"
-            , line colTan -30 -40 0 turn90M "3023b.dat"
-            , line colTan -50 -40 0 turn90M "3023b.dat"
-            , line colDarkRed -40 -64 -20 straightM "3040b.dat"
-            , line colDarkRed -40 -64 20 turn180M "3040b.dat"
-            , line colReddishBrown -50 -80 -10 straightM "3024.dat"
-            , -- House 2 (east): white cottage + dark tan roof
-              line colWhite 30 -24 -10 turn90M "3003.dat"
-            , line colTransYellow 30 -32 10 turn90M "3023b.dat"
-            , line colWhite 30 -32 -10 turn90M "3023b.dat"
-            , line colRed 30 -32 -10 straightM "85984.dat"
-            , line colRed 30 -32 10 turn180M "85984.dat"
-            , -- Garden trees
-              line colReddishBrown 50 -24 50 straightM "3062b.dat"
-            , line colDarkGreen 50 -48 50 straightM "4589.dat"
-            , line colRed 10 -8 50 straightM "24866.dat"
+            , -- Front garden patio / walkway
+              line colTan -20 -8 60 straightM "3068b.dat"
+            , line colTan 20 -8 60 straightM "3068b.dat"
+            , -- House 1 (west): 2x2 cottage with pitched roof
+              line colTan -40 -24 -20 straightM "3003.dat"
+            , line colTan -40 -48 -20 straightM "3003.dat"
+            , line colDarkRed -40 -72 -10 straightM "3039.dat"
+            , -- House 2 (east): 2x2 cottage with pitched roof
+              line colWhite 40 -24 -20 straightM "3003.dat"
+            , line colWhite 40 -48 -20 straightM "3003.dat"
+            , line colBlue 40 -72 -10 straightM "3039.dat"
+            , -- Garden trees and flowers
+              line colReddishBrown 50 -24 30 straightM "3062b.dat"
+            , line colDarkGreen 50 -48 30 straightM "4589.dat"
+            , line colReddishBrown -50 -24 -50 straightM "3062b.dat"
+            , line colGreen -50 -48 -50 straightM "4589.dat"
+            , line colRed -30 -8 30 straightM "24866.dat"
+            , line colYellow -10 -8 30 straightM "24866.dat"
             ]
         }
 
 
-{-| Mid-rise 18-plate brick office/apartment block with curtain-wall bands.
+{-| Mid-rise 19-plate brick office/apartment block with curtain-wall bands.
 -}
 highRise : Template
 highRise =
@@ -491,34 +721,30 @@ highRise =
         { id = "high-rise"
         , nameEn = "High-Rise Tower"
         , nameFi = "Keskikorkea torni"
-        , descriptionEn = "18-plate mid-rise apartment and office block with glass bays and rooftop HVAC."
-        , descriptionFi = "18 tason kerrostalo lasikaistaleilla ja kattotekniikalla."
+        , descriptionEn = "19-plate mid-rise apartment and office block with glass bays and rooftop HVAC."
+        , descriptionFi = "19 tason kerrostalo lasikaistaleilla ja kattotekniikalla."
         , category = Commercial
         , lines =
             [ line colLightBluishGray 0 0 0 straightM "41539.dat"
-            , -- Lobby podium (3 plates = 24 LDU)
-              line colDarkBluishGray 0 -24 0 straightM "3001.dat"
-            , line colDarkBluishGray 0 -24 -30 straightM "3010.dat"
-            , line colTransLightBlue 0 -24 30 straightM "3010.dat"
-            , -- Floor 2: masonry + glass band
-              line colTan 0 -48 0 straightM "3001.dat"
-            , line colTransLightBlue -30 -32 30 straightM "3023b.dat"
-            , line colTransLightBlue 30 -32 30 straightM "3023b.dat"
-            , line colTan 0 -32 30 straightM "3023b.dat"
-            , line colTan 0 -56 0 straightM "3020.dat"
-            , -- Upper tower core (4x2 -> height up to Y -136 = 17 plates)
-              line colWhite 0 -80 0 straightM "3001.dat"
-            , line colTransLightBlue 0 -88 0 straightM "3020.dat"
-            , line colWhite 0 -112 0 straightM "3001.dat"
-            , line colTransLightBlue 0 -120 0 straightM "3020.dat"
-            , line colDarkBluishGray 0 -128 0 straightM "3020.dat"
-            , -- Rooftop penthouse & grilles (Y -144 = 18 plates)
-              line colLightBluishGray -10 -136 0 straightM "2412b.dat"
-            , line colLightBluishGray 20 -136 0 turn90M "2412b.dat"
-            , line colDarkBluishGray 0 -144 0 straightM "3068b.dat"
-            , -- Street-level shrub & plaza tile
-              line colGreen -60 -24 -60 straightM "3062b.dat"
-            , line colDarkGreen -60 -48 -60 straightM "4589.dat"
+            , -- Ground podium (4x4 studs = 80x80 LDU)
+              line colDarkBluishGray 0 -24 -20 straightM "3001.dat"
+            , line colDarkBluishGray 0 -24 20 straightM "3001.dat"
+            , -- Floor 2 (masonry band)
+              line colTan 0 -48 -20 straightM "3001.dat"
+            , line colTan 0 -48 20 straightM "3001.dat"
+            , -- Plate transition band
+              line colDarkBluishGray 0 -56 0 straightM "3031.dat"
+            , -- Tower core (2x2 shaft, height up to Y -144 = 18 plates)
+              line colWhite 0 -80 0 straightM "3003.dat"
+            , line colTransLightBlue 0 -88 0 straightM "3022.dat"
+            , line colWhite 0 -112 0 straightM "3003.dat"
+            , line colTransLightBlue 0 -120 0 straightM "3022.dat"
+            , line colDarkBluishGray 0 -144 0 straightM "3003.dat"
+            , -- Rooftop crown (Y -152 = 19 plates)
+              line colLightBluishGray 0 -152 0 straightM "3068b.dat"
+            , -- Plaza landscaping
+              line colGreen -50 -24 -50 straightM "3062b.dat"
+            , line colDarkGreen -50 -48 -50 straightM "4589.dat"
             ]
         }
 
@@ -536,26 +762,26 @@ modernSkyscraper =
         , category = Commercial
         , lines =
             [ line colDarkBluishGray 0 0 0 straightM "41539.dat"
-            , -- Street plaza tiles & colonnade arches
+            , -- Plaza sidewalks
               line colLightBluishGray -60 -8 0 turn90M "87079.dat"
             , line colLightBluishGray 60 -8 0 turn90M "87079.dat"
-            , line colWhite 0 -24 50 straightM "3659.dat"
-            , line colWhite 0 -24 -50 straightM "3659.dat"
-            , -- Lower 4x4 tower tier (levels 0..9 = 72 LDU)
-              line colDarkBluishGray 0 -24 0 straightM "3001.dat"
-            , line colTransLightBlue 0 -32 0 straightM "3020.dat"
-            , line colDarkBluishGray 0 -56 0 straightM "3001.dat"
-            , line colTransLightBlue 0 -64 0 straightM "3020.dat"
-            , line colLightBluishGray 0 -72 0 straightM "3031.dat"
-            , -- Mid 2x2 glass shaft (levels 9..18 = 144 LDU)
-              line colTransLightBlue 0 -96 0 straightM "3003.dat"
-            , line colDarkBluishGray 0 -104 0 straightM "3022.dat"
-            , line colTransLightBlue 0 -128 0 straightM "3003.dat"
-            , line colDarkBluishGray 0 -136 0 straightM "3022.dat"
-            , -- Tapered crown & radar spire (18..29 plates = 232 LDU)
-              line colTransLightBlue 0 -144 0 straightM "3022.dat"
-            , line colWhite 0 -152 0 straightM "4740.dat"
-            , line colLightBluishGray 0 -152 0 straightM "3957a.dat"
+            , -- Lower 4x4 tower tier
+              line colDarkBluishGray 0 -24 -20 straightM "3001.dat"
+            , line colDarkBluishGray 0 -24 20 straightM "3001.dat"
+            , line colTransLightBlue 0 -32 0 straightM "3031.dat"
+            , line colDarkBluishGray 0 -56 -20 straightM "3001.dat"
+            , line colDarkBluishGray 0 -56 20 straightM "3001.dat"
+            , line colTransLightBlue 0 -64 0 straightM "3031.dat"
+            , -- Setback 2x2 tower core
+              line colWhite 0 -88 0 straightM "3003.dat"
+            , line colTransLightBlue 0 -96 0 straightM "3022.dat"
+            , line colWhite 0 -104 0 straightM "3022.dat"
+            , line colTransLightBlue 0 -112 0 straightM "3022.dat"
+            , line colDarkBluishGray 0 -120 0 straightM "3022.dat"
+            , -- Crown and spire
+              line colTransLightBlue 0 -128 0 straightM "3022.dat"
+            , line colWhite 0 -136 0 straightM "4740.dat"
+            , line colLightBluishGray 0 -144 0 straightM "3957a.dat"
             ]
         }
 
@@ -574,27 +800,31 @@ centralPark =
         , lines =
             [ line colGreen 0 0 0 straightM "41539.dat"
             , -- Tan gravel cross paths
-              line colTan 0 -8 -50 turn90M "3069b.dat"
-            , line colTan 0 -8 50 turn90M "3069b.dat"
-            , line colTan -50 -8 0 straightM "3069b.dat"
-            , line colTan 50 -8 0 straightM "3069b.dat"
-            , -- Central tiered fountain
-              line colLightBluishGray 0 -8 0 straightM "4032b.dat"
-            , line colTransLightBlue 0 -16 0 straightM "6141.dat"
-            , line colTransLightBlue 0 -24 0 straightM "85861.dat"
-            , line colWhite 0 -32 0 straightM "6141.dat"
-            , -- Four corner pine trees & flowerbeds
+              line colTan 0 -8 -60 straightM "3068b.dat"
+            , line colTan 0 -8 60 straightM "3068b.dat"
+            , line colTan -60 -8 0 straightM "3068b.dat"
+            , line colTan 60 -8 0 straightM "3068b.dat"
+            , -- Central tiered fountain on 2x2 plate
+              line colLightBluishGray 0 -8 0 straightM "3022.dat"
+            , line colTransLightBlue -10 -16 -10 straightM "6141.dat"
+            , line colTransLightBlue 10 -16 -10 straightM "6141.dat"
+            , line colTransLightBlue -10 -16 10 straightM "6141.dat"
+            , line colTransLightBlue 10 -16 10 straightM "6141.dat"
+            , line colWhite 0 -24 0 straightM "4740.dat"
+            , -- Corner pine trees
               line colReddishBrown -50 -24 -50 straightM "3062b.dat"
             , line colDarkGreen -50 -48 -50 straightM "4589.dat"
             , line colGreen -50 -72 -50 straightM "4589.dat"
+            , line colReddishBrown 50 -24 -50 straightM "3062b.dat"
+            , line colDarkGreen 50 -48 -50 straightM "4589.dat"
+            , line colGreen 50 -72 -50 straightM "4589.dat"
             , line colReddishBrown 50 -24 50 straightM "3062b.dat"
             , line colDarkGreen 50 -48 50 straightM "4589.dat"
             , line colGreen 50 -72 50 straightM "4589.dat"
-            , line colReddishBrown 50 -24 -50 straightM "3062b.dat"
-            , line colGreen 50 -48 -50 straightM "4589.dat"
-            , line colRed -50 -8 50 straightM "24866.dat"
+            , -- Flowerbeds
+              line colRed -50 -8 50 straightM "24866.dat"
             , line colYellow -30 -8 50 straightM "24866.dat"
-            , line colReddishBrown 30 -8 30 straightM "2412b.dat"
+            , line colRed -50 -8 30 straightM "24866.dat"
             ]
         }
 
@@ -612,19 +842,17 @@ industrialPlant =
         , category = Industrial
         , lines =
             [ line colDarkBluishGray 0 0 0 straightM "41539.dat"
-            , -- Factory hall & sawtooth roofs
-              line colDarkTan -20 -24 20 straightM "3001.dat"
-            , line colDarkTan -20 -48 20 straightM "3001.dat"
-            , line colLightBluishGray -40 -48 20 straightM "85984.dat"
-            , line colLightBluishGray 0 -48 20 straightM "85984.dat"
-            , -- Loading bay grilles
-              line colYellow -30 -24 50 straightM "2877.dat"
-            , line colLightBluishGray 10 -8 50 straightM "2412b.dat"
-            , -- Storage silo (2x2 round + dome)
+            , -- Factory hall (4x4 footprint)
+              line colDarkTan -40 -24 20 straightM "3001.dat"
+            , line colDarkTan -40 -24 60 straightM "3001.dat"
+            , line colDarkTan -40 -48 20 straightM "3001.dat"
+            , line colDarkTan -40 -48 60 straightM "3001.dat"
+            , line colLightBluishGray -40 -56 40 straightM "3031.dat"
+            , -- Storage silo (2x2 round brick + dome)
               line colLightBluishGray 40 -24 40 straightM "3941.dat"
             , line colLightBluishGray 40 -48 40 straightM "3941.dat"
             , line colDarkBluishGray 40 -56 40 straightM "4740.dat"
-            , -- Twin smokestacks with white steam plumes
+            , -- Twin smokestacks with steam plumes
               line colDarkRed -50 -24 -50 straightM "3062b.dat"
             , line colDarkRed -50 -48 -50 straightM "3062b.dat"
             , line colBlack -50 -72 -50 straightM "3062b.dat"
@@ -650,24 +878,29 @@ waterfrontCanal =
         , category = Waterfront
         , lines =
             [ line colMediumBlue 0 0 0 straightM "41539.dat"
-            , -- Trans-light-blue canal tiles along center
-              line colTransLightBlue 0 -8 -40 turn90M "87079.dat"
-            , line colTransLightBlue 0 -8 40 turn90M "87079.dat"
-            , -- Stone quays on west & east banks
-              line colLightBluishGray -60 -24 0 turn90M "3001.dat"
-            , line colTan -60 -24 -60 straightM "98283.dat"
-            , line colTan -60 -24 60 straightM "98283.dat"
-            , line colLightBluishGray 60 -24 0 turn90M "3001.dat"
-            , line colTan 60 -24 -60 straightM "98283.dat"
-            , line colTan 60 -24 60 straightM "98283.dat"
-            , -- Arched footbridge spanning the canal
-              line colDarkTan 0 -48 0 straightM "3659.dat"
-            , line colReddishBrown 0 -56 0 straightM "2431.dat"
-            , -- Tiny micro sailboat floating on south canal
-              line colReddishBrown 0 -16 50 straightM "3069b.dat"
-            , line colWhite -10 -16 50 straightM "54200.dat"
+            , -- Trans-light-blue canal tiles along center (4x8 studs)
+              line colTransLightBlue 0 -8 -60 straightM "87079.dat"
+            , line colTransLightBlue 0 -8 -20 straightM "87079.dat"
+            , line colTransLightBlue 0 -8 20 straightM "87079.dat"
+            , line colTransLightBlue 0 -8 60 straightM "87079.dat"
+            , -- Stone quays on west bank (X = -60)
+              line colLightBluishGray -60 -24 -60 straightM "3003.dat"
+            , line colLightBluishGray -60 -24 -20 straightM "3003.dat"
+            , line colLightBluishGray -60 -24 20 straightM "3003.dat"
+            , line colLightBluishGray -60 -24 60 straightM "3003.dat"
+            , -- Stone quays on east bank (X = 60)
+              line colLightBluishGray 60 -24 -60 straightM "3003.dat"
+            , line colLightBluishGray 60 -24 -20 straightM "3003.dat"
+            , line colLightBluishGray 60 -24 20 straightM "3003.dat"
+            , line colLightBluishGray 60 -24 60 straightM "3003.dat"
+            , -- Footbridge spanning the canal (6 studs = 120 LDU wide from quay to quay)
+              line colDarkTan 0 -32 0 straightM "3795.dat"
+            , line colReddishBrown 0 -40 -10 straightM "6636.dat"
+            , line colReddishBrown 0 -40 10 straightM "6636.dat"
             , -- Quay trees
-              line colReddishBrown -60 -48 -50 straightM "3062b.dat"
-            , line colGreen -60 -72 -50 straightM "4589.dat"
+              line colReddishBrown -70 -48 -50 straightM "3062b.dat"
+            , line colGreen -70 -72 -50 straightM "4589.dat"
+            , line colReddishBrown 70 -48 50 straightM "3062b.dat"
+            , line colGreen 70 -72 50 straightM "4589.dat"
             ]
         }

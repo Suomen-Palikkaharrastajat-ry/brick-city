@@ -150,11 +150,8 @@ exportCityMpd city =
 
         lotSubmodel ( ( r, c ), el ) =
             let
-                doc =
-                    Document.parse el.ldrawText
-
                 placedLines =
-                    Document.flattenedPlacements doc
+                    Document.flattenedPlacements el.document
                         |> List.map
                             (\p ->
                                 let

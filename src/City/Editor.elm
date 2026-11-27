@@ -1,8 +1,10 @@
 module City.Editor exposing
     ( PartCategory
+    , PartDrawer(..)
     , PartEntry
     , Swatch
     , baseplateIntact
+    , categoriesForDrawer
     , defaultColour
     , dropMatrix
     , isBaseplatePlacement
@@ -83,12 +85,40 @@ type alias PartCategory =
     }
 
 
+{-| Organized part drawer tabs in the 8x8 Element Editor bottom dock.
+-}
+type PartDrawer
+    = BricksDrawer
+    | PlatesTilesDrawer
+    | SnotSlopesDrawer
+
+
+{-| Return the microscale part categories belonging to a given bottom-dock drawer.
+-}
+categoriesForDrawer : PartDrawer -> List PartCategory
+categoriesForDrawer drawer =
+    case drawer of
+        BricksDrawer ->
+            bricksCategories
+
+        PlatesTilesDrawer ->
+            platesTilesCategories
+
+        SnotSlopesDrawer ->
+            snotSlopesCategories
+
+
 {-| Curated microscale brick catalog for 8x8 city elements.
 Every part exists in `brick-catalog/data/curated-parts.json` and has explicit
 `LDraw.Connectivity.knownCatalogPart` geometry for stud snapping.
 -}
 partCategories : List PartCategory
 partCategories =
+    bricksCategories ++ platesTilesCategories ++ snotSlopesCategories
+
+
+bricksCategories : List PartCategory
+bricksCategories =
     [ { titleEn = "Micro Bricks"
       , titleFi = "Peruspalikat"
       , parts =
@@ -118,7 +148,12 @@ partCategories =
             , part "3633.dat" "Fence 1 × 4 × 1" "Aita 1 × 4 × 1"
             ]
       }
-    , { titleEn = "Plates & Foundations"
+    ]
+
+
+platesTilesCategories : List PartCategory
+platesTilesCategories =
+    [ { titleEn = "Plates & Foundations"
       , titleFi = "Levyt ja perustat"
       , parts =
             [ part "3024.dat" "Plate 1 × 1" "Levy 1 × 1"
@@ -127,6 +162,7 @@ partCategories =
             , part "3710.dat" "Plate 1 × 4" "Levy 1 × 4"
             , part "3022.dat" "Plate 2 × 2" "Levy 2 × 2"
             , part "3020.dat" "Plate 2 × 4" "Levy 2 × 4"
+            , part "3795.dat" "Plate 2 × 6" "Levy 2 × 6"
             , part "3031.dat" "Plate 4 × 4" "Levy 4 × 4"
             , part "3958.dat" "Plate 6 × 6" "Levy 6 × 6"
             , part "6141.dat" "Round Plate 1 × 1" "Pyöreä levy 1 × 1"
@@ -143,6 +179,7 @@ partCategories =
             , part "3069b.dat" "Tile 1 × 2" "Laatta 1 × 2"
             , part "63864.dat" "Tile 1 × 3" "Laatta 1 × 3"
             , part "2431.dat" "Tile 1 × 4" "Laatta 1 × 4"
+            , part "6636.dat" "Tile 1 × 6" "Laatta 1 × 6"
             , part "3068b.dat" "Tile 2 × 2" "Laatta 2 × 2"
             , part "26603.dat" "Tile 2 × 3" "Laatta 2 × 3"
             , part "87079.dat" "Tile 2 × 4" "Laatta 2 × 4"
@@ -152,7 +189,12 @@ partCategories =
             , part "2412b.dat" "Grille Tile 1 × 2" "Ritilälaatta 1 × 2"
             ]
       }
-    , { titleEn = "Roofs, Slopes & Arches"
+    ]
+
+
+snotSlopesCategories : List PartCategory
+snotSlopesCategories =
+    [ { titleEn = "Roofs, Slopes & Arches"
       , titleFi = "Katot, viisteet ja kaaret"
       , parts =
             [ part "54200.dat" "Cheese Slope 1 × 1" "Juustoviiste 1 × 1"

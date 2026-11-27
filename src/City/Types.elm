@@ -13,6 +13,7 @@ module City.Types exposing
     , ViewMode(..)
     , categoryFromString
     , categoryToString
+    , hashLdrawText
     , lotKey
     )
 
@@ -21,7 +22,9 @@ the expandable microscale city grid, 8x8 lot elements, validation issues,
 city statistics, and real-time room collaboration state.
 -}
 
+import Bitwise
 import Dict exposing (Dict)
+import LDraw.Document exposing (Document)
 
 
 {-| Coordinates of one 8x8 lot in the city grid (0-indexed).
@@ -113,12 +116,19 @@ categoryFromString raw =
 
 
 {-| One 8x8 stud microscale city element placed on a lot.
+
+Caches the parsed `document` AST and deterministic `contentHash` of
+`ldrawText` so camera movement, room presence updates, mesh lookups, MPD
+exports, and editor entry never re-parse `.ldr` strings unnecessarily.
+
 -}
 type alias LotElement =
     { id : String
     , name : String
     , category : ElementCategory
     , ldrawText : String
+    , document : Document
+    , contentHash : String
     , templateId : Maybe String
     , rotation : Int
     , updatedAt : Int
@@ -126,6 +136,33 @@ type alias LotElement =
     , partCount : Int
     , heightPlates : Int
     }
+
+
+{-| Compute a deterministic 64-bit content hash (paired 32-bit DJB2 + SDBM
+lanes plus byte/char length) for an LDraw source string. Used to key
+content-addressed GPU lot meshes without comparing multi-kilobyte strings on
+every frame.
+-}
+hashLdrawText : String -> String
+hashLdrawText text =
+    let
+        step ch ( h1, h2 ) =
+            let
+                code =
+                    Char.toCode ch
+
+                next1 =
+                    Bitwise.shiftRightZfBy 0 (h1 * 33 + code)
+
+                next2 =
+                    Bitwise.shiftRightZfBy 0 (Bitwise.xor h2 code * 65599)
+            in
+            ( next1, next2 )
+
+        ( final1, final2 ) =
+            String.foldl step ( 5381, 0 ) text
+    in
+    String.fromInt final1 ++ ":" ++ String.fromInt final2 ++ ":" ++ String.fromInt (String.length text)
 
 
 {-| Contents of a lot in the city grid.
@@ -207,8 +244,9 @@ type alias CityRoom =
 {-| Active top-level workspace mode.
 -}
 type ViewMode
-    = ViewCity
-    | ViewLotEditor
+    = MainMenuPage
+    | CityPage
+    | LotEditorPage
 
 
 {-| Validation failure for an 8x8 microscale element.

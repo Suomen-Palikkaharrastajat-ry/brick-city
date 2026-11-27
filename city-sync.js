@@ -17,6 +17,7 @@ import {
 } from './vendor/packages/brick-frame-game/runtime/share.js'
 
 export const CITY_STORAGE_KEY = 'palikkakehys.city.current'
+export const CITY_SAVED_AT_KEY = 'palikkakehys.city.savedAt'
 export const CITY_ROOM_CACHE_PREFIX = 'palikkakehys.city.room.'
 export const MAX_ROOM_CAPACITY = 8
 
@@ -38,7 +39,7 @@ export function slotColor(slot) {
 
 /**
  * Parse a Brick City room code from `#/city/:roomId`, `#city=:roomId`,
- * `#room=:roomId`, or `#join=:roomId`. Returns uppercase 4..12 char code or ''.
+ * `#room=:roomId`, `#join=:roomId`, or `?room=:roomId`. Returns uppercase 4..12 char code or ''.
  */
 export function parseCityRoomFromHash(rawInput) {
   const str = String(rawInput ?? '').trim()
@@ -47,7 +48,7 @@ export function parseCityRoomFromHash(rawInput) {
   if (pathMatch && pathMatch[1]) {
     return pathMatch[1].toUpperCase()
   }
-  const paramMatch = str.match(/[#&](?:city|room|join)=([A-Za-z0-9]{4,12})(?:[&#]|$)/i)
+  const paramMatch = str.match(/[?#&](?:city|room|join)=([A-Za-z0-9]{4,12})(?:[&#]|$)/i)
   if (paramMatch && paramMatch[1]) {
     return paramMatch[1].toUpperCase()
   }
@@ -68,6 +69,19 @@ export function readStoredCityJson(storage = typeof window !== 'undefined' ? win
   }
 }
 
+export function readStoredCitySavedAt(
+  storage = typeof window !== 'undefined' ? window.localStorage : null,
+) {
+  try {
+    if (!storage) return 0
+    const raw = storage.getItem(CITY_SAVED_AT_KEY)
+    const num = Number(raw)
+    return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0
+  } catch {
+    return 0
+  }
+}
+
 export function writeStoredCityJson(
   jsonText,
   storage = typeof window !== 'undefined' ? window.localStorage : null,
@@ -75,6 +89,7 @@ export function writeStoredCityJson(
   try {
     if (!storage) return false
     storage.setItem(CITY_STORAGE_KEY, String(jsonText ?? ''))
+    storage.setItem(CITY_SAVED_AT_KEY, String(Date.now()))
     return true
   } catch {
     return false
